@@ -39,6 +39,15 @@ enum class Opcode {
   SRLI,
   SRAI,
   ADD,
+  SUB,
+  SLL,
+  SLT,
+  SLTU,
+  XOR,
+  SRL,
+  SRA,
+  OR,
+  AND,
 };
 
 struct IfIdRegister {

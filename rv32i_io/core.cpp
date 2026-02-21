@@ -131,6 +131,33 @@ void rv32i_io::Core::Process() {
         case Opcode::ADD:
           std::cout << "ADD";
           break;
+        case Opcode::SUB:
+          std::cout << "SUB";
+          break;
+        case Opcode::SLL:
+          std::cout << "SLL";
+          break;
+        case Opcode::SLT:
+          std::cout << "SLT";
+          break;
+        case Opcode::SLTU:
+          std::cout << "SLTU";
+          break;
+        case Opcode::XOR:
+          std::cout << "XOR";
+          break;
+        case Opcode::SRL:
+          std::cout << "SRL";
+          break;
+        case Opcode::SRA:
+          std::cout << "SRA";
+          break;
+        case Opcode::OR:
+          std::cout << "OR";
+          break;
+        case Opcode::AND:
+          std::cout << "AND";
+          break;
       }
 
       std::cout << " instruction @ PC " << std::setfill('0') << std::setw(8)
@@ -255,8 +282,33 @@ void rv32i_io::Core::ProcessDecode(
 
     uint32_t funct3 = (ifid.inst >> 12) & 0b111;
     switch (funct3) {
-      case 0b000:
-        next_idex.opcode = Opcode::ADD;
+      case 0b000: {
+        int add_sub_flag = (ifid.inst >> 30) & 0x1;
+        next_idex.opcode = add_sub_flag ? Opcode::SUB : Opcode::ADD;
+        break;
+      }
+      case 0b001:
+        next_idex.opcode = Opcode::SLL;
+        break;
+      case 0b010:
+        next_idex.opcode = Opcode::SLT;
+        break;
+      case 0b011:
+        next_idex.opcode = Opcode::SLTU;
+        break;
+      case 0b100:
+        next_idex.opcode = Opcode::XOR;
+        break;
+      case 0b101: {
+        int arithmetic_flag = (ifid.inst >> 30) & 0x1;
+        next_idex.opcode = arithmetic_flag ? Opcode::SRA : Opcode::SRL;
+        break;
+      }
+      case 0b110:
+        next_idex.opcode = Opcode::OR;
+        break;
+      case 0b111:
+        next_idex.opcode = Opcode::AND;
         break;
       default:
         next_idex.illegal = true;
@@ -332,6 +384,39 @@ void rv32i_io::Core::ProcessExecute(ExMemRegister& next_exmem,
     case Opcode::ADD:
       next_exmem.v = idex.v1 + idex.v2;
       break;
+    case Opcode::SUB:
+      next_exmem.v = idex.v1 - idex.v2;
+      break;
+    case Opcode::SLL:
+      next_exmem.v = idex.v1 << idex.v2;
+      break;
+    case Opcode::SLT: {
+      int32_t sv1 = (int32_t)idex.v1;
+      int32_t sv2 = (int32_t)idex.v2;
+      next_exmem.v = (sv1 < sv2) ? 1 : 0;
+      break;
+    }
+    case Opcode::SLTU:
+      next_exmem.v = (idex.v1 < idex.v2) ? 1 : 0;
+      break;
+    case Opcode::XOR:
+      next_exmem.v = idex.v1 ^ idex.v2;
+      break;
+    case Opcode::SRL:
+      next_exmem.v = idex.v1 >> idex.v2;
+      break;
+    case Opcode::SRA: {
+      int32_t sv1 = (int32_t)idex.v1;
+      int32_t sv2 = (int32_t)idex.v2;
+      next_exmem.v = sv1 >> sv2;
+      break;
+    }
+    case Opcode::OR:
+      next_exmem.v = idex.v1 | idex.v2;
+      break;
+    case Opcode::AND:
+      next_exmem.v = idex.v1 & idex.v2;
+      break;
     default:
       next_exmem.illegal = true;
       next_exmem.v = 0;
@@ -349,6 +434,15 @@ void rv32i_io::Core::ProcessExecute(ExMemRegister& next_exmem,
     case Opcode::SRLI:
     case Opcode::SRAI:
     case Opcode::ADD:
+    case Opcode::SUB:
+    case Opcode::SLL:
+    case Opcode::SLT:
+    case Opcode::SLTU:
+    case Opcode::XOR:
+    case Opcode::SRL:
+    case Opcode::SRA:
+    case Opcode::OR:
+    case Opcode::AND:
       forward.valid = true;
       forward.rd = idex.rd;
       forward.data_valid = true;
@@ -387,6 +481,15 @@ void rv32i_io::Core::ProcessMemory(MemWbRegister& next_memwb,
     case Opcode::SRLI:
     case Opcode::SRAI:
     case Opcode::ADD:
+    case Opcode::SUB:
+    case Opcode::SLL:
+    case Opcode::SLT:
+    case Opcode::SLTU:
+    case Opcode::XOR:
+    case Opcode::SRL:
+    case Opcode::SRA:
+    case Opcode::OR:
+    case Opcode::AND:
       forward.valid = true;
       forward.rd = exmem.rd;
       forward.data_valid = true;

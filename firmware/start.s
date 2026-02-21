@@ -2,7 +2,7 @@
 .global _start
 
 _start:
-  li x1, -2
-  li x2, -3
-  add x3, x1, x2
+  li x1, -4
+  li x2, 4
+  and x3, x1, x2
   wfi
