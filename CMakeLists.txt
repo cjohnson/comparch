@@ -18,7 +18,11 @@ endif()
 set(CMAKE_PREFIX_PATH ${SYSTEMC_HOME})
 find_package(SystemCLanguage CONFIG REQUIRED)
 
-add_executable(comparch
-  main.cpp
-  in_order_core.cpp)
-target_link_libraries(comparch SystemC::systemc)
+add_library(rv32i_io rv32i_io/core.cpp)
+target_include_directories(rv32i_io PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(rv32i_io SystemC::systemc)
+
+add_executable(comparch main.cpp)
+target_link_libraries(comparch
+  rv32i_io
+  SystemC::systemc)
