@@ -29,15 +29,16 @@ struct ReadOnlyMemory : IMemory {
 namespace rv32i_io {
 
 enum class Opcode {
+  ADDI,
+  SLTI,
+  SLTIU,
+  XORI,
+  ORI,
+  ANDI,
+  SLLI,
+  SRLI,
+  SRAI,
   ADD,
-  SLT,
-  SLTU,
-  XOR,
-  OR,
-  AND,
-  SLL,
-  SRL,
-  SRA,
 };
 
 struct IfIdRegister {
@@ -51,34 +52,35 @@ struct IdExRegister {
   bool valid;
   bool illegal;
 
-  uint32_t pc;
-
   Opcode opcode;
+  uint32_t pc;
+  uint32_t rd;
+
   uint32_t v1;
   uint32_t v2;
-  uint32_t rd;
+  uint32_t imm;
 };
 
 struct ExMemRegister {
   bool valid;
   bool illegal;
 
-  uint32_t pc;
-
   Opcode opcode;
-  uint32_t v;
+  uint32_t pc;
   uint32_t rd;
+
+  uint32_t v;
 };
 
 struct MemWbRegister {
   bool valid;
   bool illegal;
 
-  uint32_t pc;
-
   Opcode opcode;
-  uint32_t v;
+  uint32_t pc;
   uint32_t rd;
+
+  uint32_t v;
 };
 
 struct ForwardPacket {
@@ -102,11 +104,12 @@ SC_MODULE(Core) {
 
   void Process();
 
-  void ProcessFetch(uint32_t& next_pc, IfIdRegister & next_ifid);
+  void ProcessFetch(uint32_t& next_pc, IfIdRegister& next_ifid);
   void ProcessDecode(const std::array<uint32_t, 32>& next_user_registers,
-                     const ForwardPacket& ex_forward, IdExRegister& next_idex);
+                     const ForwardPacket& ex_forward,
+                     const ForwardPacket& mem_forward, IdExRegister& next_idex);
   void ProcessExecute(ExMemRegister & next_exmem, ForwardPacket & forward);
-  void ProcessMemory(MemWbRegister & next_memwb);
+  void ProcessMemory(MemWbRegister & next_memwb, ForwardPacket & forward);
   void ProcessWriteback(std::array<uint32_t, 32> & next_user_registers);
 
   uint32_t pc;

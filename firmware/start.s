@@ -3,5 +3,6 @@
 
 _start:
   li x1, -2
-  srai x2, x1, 1
+  li x2, -3
+  add x3, x1, x2
   wfi

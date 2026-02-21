@@ -54,14 +54,15 @@ void rv32i_io::Core::Process() {
   ProcessWriteback(next_user_registers);
 
   MemWbRegister next_memwb;
-  ProcessMemory(next_memwb);
+  ForwardPacket mem_forward;
+  ProcessMemory(next_memwb, mem_forward);
 
   ExMemRegister next_exmem;
   ForwardPacket ex_forward;
   ProcessExecute(next_exmem, ex_forward);
 
   IdExRegister next_idex;
-  ProcessDecode(next_user_registers, ex_forward, next_idex);
+  ProcessDecode(next_user_registers, ex_forward, mem_forward, next_idex);
 
   uint32_t next_pc;
   IfIdRegister next_ifid;
@@ -100,32 +101,35 @@ void rv32i_io::Core::Process() {
                 << " [TRACE] [HART 0]: Retired ";
 
       switch (memwb.opcode) {
+        case Opcode::ADDI:
+          std::cout << "ADDI";
+          break;
+        case Opcode::SLTI:
+          std::cout << "SLTI";
+          break;
+        case Opcode::SLTIU:
+          std::cout << "SLTIU";
+          break;
+        case Opcode::XORI:
+          std::cout << "XORI";
+          break;
+        case Opcode::ORI:
+          std::cout << "ORI";
+          break;
+        case Opcode::ANDI:
+          std::cout << "ANDI";
+          break;
+        case Opcode::SLLI:
+          std::cout << "SLLI";
+          break;
+        case Opcode::SRLI:
+          std::cout << "SRLI";
+          break;
+        case Opcode::SRAI:
+          std::cout << "SRAI";
+          break;
         case Opcode::ADD:
           std::cout << "ADD";
-          break;
-        case Opcode::SLT:
-          std::cout << "SLT";
-          break;
-        case Opcode::SLTU:
-          std::cout << "SLTU";
-          break;
-        case Opcode::XOR:
-          std::cout << "XOR";
-          break;
-        case Opcode::OR:
-          std::cout << "OR";
-          break;
-        case Opcode::AND:
-          std::cout << "AND";
-          break;
-        case Opcode::SLL:
-          std::cout << "SLL";
-          break;
-        case Opcode::SRL:
-          std::cout << "SRL";
-          break;
-        case Opcode::SRA:
-          std::cout << "SRA";
           break;
       }
 
@@ -152,7 +156,8 @@ void rv32i_io::Core::ProcessFetch(uint32_t& next_pc, IfIdRegister& next_ifid) {
 
 void rv32i_io::Core::ProcessDecode(
     const std::array<uint32_t, 32>& next_user_registers,
-    const ForwardPacket& ex_forward, IdExRegister& next_idex) {
+    const ForwardPacket& ex_forward, const ForwardPacket& mem_forward,
+    IdExRegister& next_idex) {
   next_idex.valid = false;
   if (!ifid.valid) return;
 
@@ -168,13 +173,17 @@ void rv32i_io::Core::ProcessDecode(
 
   auto read_register = [&](uint32_t r, uint32_t& v) {
     if (ex_forward.valid && ex_forward.rd == r) {
-      if (!ex_forward.data_valid) {
-        return false;
-      } else {
-        v = ex_forward.data;
-        return true;
-      }
+      if (!ex_forward.data_valid) return false;
+      v = ex_forward.data;
+      return true;
     }
+
+    if (mem_forward.valid && mem_forward.rd == r) {
+      if (!mem_forward.data_valid) return false;
+      v = mem_forward.data;
+      return true;
+    }
+
     v = next_user_registers[r];
     return true;
   };
@@ -182,41 +191,35 @@ void rv32i_io::Core::ProcessDecode(
   uint32_t opcode = (ifid.inst) & 0b1111111;
   if (opcode == 0b0010011) {
     next_idex.rd = (ifid.inst >> 7) & 0b11111;
-    uint32_t funct3 = (ifid.inst >> 12) & 0b111;
-
-    uint32_t rs1 = (ifid.inst >> 15) & 0b11111;
-    if (!read_register(rs1, next_idex.v1)) {
-      next_idex.valid = false;
-      return;
-    }
 
     uint32_t imm = (ifid.inst >> 20) & 0b111111111111;
 
+    uint32_t funct3 = (ifid.inst >> 12) & 0b111;
     switch (funct3) {
       case 0b000:
-        next_idex.opcode = Opcode::ADD;
+        next_idex.opcode = Opcode::ADDI;
         break;
       case 0b010:
-        next_idex.opcode = Opcode::SLT;
+        next_idex.opcode = Opcode::SLTI;
         break;
       case 0b011:
-        next_idex.opcode = Opcode::SLTU;
+        next_idex.opcode = Opcode::SLTIU;
         break;
       case 0b100:
-        next_idex.opcode = Opcode::XOR;
+        next_idex.opcode = Opcode::XORI;
         break;
       case 0b110:
-        next_idex.opcode = Opcode::OR;
+        next_idex.opcode = Opcode::ORI;
         break;
       case 0b111:
-        next_idex.opcode = Opcode::AND;
+        next_idex.opcode = Opcode::ANDI;
         break;
       case 0b001:
-        next_idex.opcode = Opcode::SLL;
+        next_idex.opcode = Opcode::SLLI;
         break;
       case 0b101: {
         int arithmetic_flag = (imm >> 10) & 0x1;
-        next_idex.opcode = arithmetic_flag ? Opcode::SRA : Opcode::SRL;
+        next_idex.opcode = arithmetic_flag ? Opcode::SRAI : Opcode::SRLI;
         break;
       }
       default:
@@ -224,6 +227,12 @@ void rv32i_io::Core::ProcessDecode(
         break;
     }
 
+    uint32_t rs1 = (ifid.inst >> 15) & 0b11111;
+    if (!read_register(rs1, next_idex.v1)) {
+      next_idex.valid = false;
+      return;
+    }
+
     switch (funct3) {
       case 0b000:
       case 0b010:
@@ -231,15 +240,39 @@ void rv32i_io::Core::ProcessDecode(
       case 0b100:
       case 0b110:
       case 0b111:
-        next_idex.v2 = sign_extend(imm, 12);
+        next_idex.imm = sign_extend(imm, 12);
         break;
       case 0b001:
       case 0b101:
-        next_idex.v2 = imm & 0b11111;
+        next_idex.imm = imm & 0b11111;
         break;
       default:
         next_idex.illegal = true;
         break;
+    }
+  } else if (opcode == 0b0110011) {
+    next_idex.rd = (ifid.inst >> 7) & 0b11111;
+
+    uint32_t funct3 = (ifid.inst >> 12) & 0b111;
+    switch (funct3) {
+      case 0b000:
+        next_idex.opcode = Opcode::ADD;
+        break;
+      default:
+        next_idex.illegal = true;
+        break;
+    }
+
+    uint32_t rs1 = (ifid.inst >> 15) & 0b11111;
+    if (!read_register(rs1, next_idex.v1)) {
+      next_idex.valid = false;
+      return;
+    }
+
+    uint32_t rs2 = (ifid.inst >> 20) & 0b11111;
+    if (!read_register(rs2, next_idex.v2)) {
+      next_idex.valid = false;
+      return;
     }
   } else {
     next_idex.illegal = true;
@@ -263,39 +296,42 @@ void rv32i_io::Core::ProcessExecute(ExMemRegister& next_exmem,
   next_exmem.rd = idex.rd;
 
   switch (idex.opcode) {
-    case Opcode::ADD:
-      next_exmem.v = idex.v1 + idex.v2;
+    case Opcode::ADDI:
+      next_exmem.v = idex.v1 + idex.imm;
       break;
-    case Opcode::SLT: {
+    case Opcode::SLTI: {
       int32_t sv1 = (int32_t)idex.v1;
-      int32_t sv2 = (int32_t)idex.v2;
+      int32_t sv2 = (int32_t)idex.imm;
       next_exmem.v = (sv1 < sv2) ? 1 : 0;
       break;
     }
-    case Opcode::SLTU:
-      next_exmem.v = (idex.v1 < idex.v2) ? 1 : 0;
+    case Opcode::SLTIU:
+      next_exmem.v = (idex.v1 < idex.imm) ? 1 : 0;
       break;
-    case Opcode::XOR:
-      next_exmem.v = idex.v1 ^ idex.v2;
+    case Opcode::XORI:
+      next_exmem.v = idex.v1 ^ idex.imm;
       break;
-    case Opcode::OR:
-      next_exmem.v = idex.v1 | idex.v2;
+    case Opcode::ORI:
+      next_exmem.v = idex.v1 | idex.imm;
       break;
-    case Opcode::AND:
-      next_exmem.v = idex.v1 & idex.v2;
+    case Opcode::ANDI:
+      next_exmem.v = idex.v1 & idex.imm;
       break;
-    case Opcode::SLL:
-      next_exmem.v = idex.v1 << idex.v2;
+    case Opcode::SLLI:
+      next_exmem.v = idex.v1 << idex.imm;
       break;
-    case Opcode::SRL:
-      next_exmem.v = idex.v1 >> idex.v2;
+    case Opcode::SRLI:
+      next_exmem.v = idex.v1 >> idex.imm;
       break;
-    case Opcode::SRA: {
+    case Opcode::SRAI: {
       int32_t sv1 = (int32_t)idex.v1;
-      int32_t sv2 = (int32_t)idex.v2;
+      int32_t sv2 = (int32_t)idex.imm;
       next_exmem.v = sv1 >> sv2;
       break;
     }
+    case Opcode::ADD:
+      next_exmem.v = idex.v1 + idex.v2;
+      break;
     default:
       next_exmem.illegal = true;
       next_exmem.v = 0;
@@ -303,15 +339,16 @@ void rv32i_io::Core::ProcessExecute(ExMemRegister& next_exmem,
   }
 
   switch (idex.opcode) {
+    case Opcode::ADDI:
+    case Opcode::SLTI:
+    case Opcode::SLTIU:
+    case Opcode::XORI:
+    case Opcode::ORI:
+    case Opcode::ANDI:
+    case Opcode::SLLI:
+    case Opcode::SRLI:
+    case Opcode::SRAI:
     case Opcode::ADD:
-    case Opcode::SLT:
-    case Opcode::SLTU:
-    case Opcode::XOR:
-    case Opcode::OR:
-    case Opcode::AND:
-    case Opcode::SLL:
-    case Opcode::SRL:
-    case Opcode::SRA:
       forward.valid = true;
       forward.rd = idex.rd;
       forward.data_valid = true;
@@ -322,8 +359,12 @@ void rv32i_io::Core::ProcessExecute(ExMemRegister& next_exmem,
   }
 }
 
-void rv32i_io::Core::ProcessMemory(MemWbRegister& next_memwb) {
+void rv32i_io::Core::ProcessMemory(MemWbRegister& next_memwb,
+                                   ForwardPacket& forward) {
   next_memwb.valid = false;
+
+  forward.valid = false;
+
   if (!exmem.valid) return;
 
   next_memwb.valid = exmem.valid;
@@ -334,6 +375,26 @@ void rv32i_io::Core::ProcessMemory(MemWbRegister& next_memwb) {
   next_memwb.opcode = exmem.opcode;
   next_memwb.v = exmem.v;
   next_memwb.rd = exmem.rd;
+
+  switch (exmem.opcode) {
+    case Opcode::ADDI:
+    case Opcode::SLTI:
+    case Opcode::SLTIU:
+    case Opcode::XORI:
+    case Opcode::ORI:
+    case Opcode::ANDI:
+    case Opcode::SLLI:
+    case Opcode::SRLI:
+    case Opcode::SRAI:
+    case Opcode::ADD:
+      forward.valid = true;
+      forward.rd = exmem.rd;
+      forward.data_valid = true;
+      forward.data = next_memwb.v;
+      break;
+    default:
+      break;
+  }
 }
 
 void rv32i_io::Core::ProcessWriteback(
