@@ -76,8 +76,17 @@ struct MemWbRegister {
 
   uint32_t pc;
 
+  Opcode opcode;
   uint32_t v;
   uint32_t rd;
+};
+
+struct ForwardPacket {
+  bool valid;
+  uint32_t rd;
+
+  bool data_valid;
+  uint32_t data;
 };
 
 SC_MODULE(Core) {
@@ -86,14 +95,20 @@ SC_MODULE(Core) {
 
   sc_port<IMemory> memory{"memory"};
 
-  void Process();
-
   SC_CTOR(Core) {
     SC_METHOD(Process);
     sensitive << clk.pos();
   }
 
- private:
+  void Process();
+
+  void ProcessFetch(uint32_t& next_pc, IfIdRegister & next_ifid);
+  void ProcessDecode(const std::array<uint32_t, 32>& next_user_registers,
+                     const ForwardPacket& ex_forward, IdExRegister& next_idex);
+  void ProcessExecute(ExMemRegister & next_exmem, ForwardPacket & forward);
+  void ProcessMemory(MemWbRegister & next_memwb);
+  void ProcessWriteback(std::array<uint32_t, 32> & next_user_registers);
+
   uint32_t pc;
   IfIdRegister ifid;
 
