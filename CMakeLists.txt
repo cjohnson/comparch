@@ -19,5 +19,6 @@ set(CMAKE_PREFIX_PATH ${SYSTEMC_HOME})
 find_package(SystemCLanguage CONFIG REQUIRED)
 
 add_executable(comparch
-  main.cpp)
+  main.cpp
+  in_order_core.cpp)
 target_link_libraries(comparch SystemC::systemc)
