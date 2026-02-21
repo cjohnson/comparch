@@ -2,7 +2,7 @@
 .global _start
 
 _start:
-  li x1, -4
-  li x2, 4
-  and x3, x1, x2
+  add x1, zero, 1
+  auipc x1, 0
+  auipc x2, 0
   wfi

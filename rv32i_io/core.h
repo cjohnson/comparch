@@ -29,6 +29,8 @@ struct ReadOnlyMemory : IMemory {
 namespace rv32i_io {
 
 enum class Opcode {
+  LUI,
+  AUIPC,
   ADDI,
   SLTI,
   SLTIU,

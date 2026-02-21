@@ -158,6 +158,12 @@ void rv32i_io::Core::Process() {
         case Opcode::AND:
           std::cout << "AND";
           break;
+        case Opcode::LUI:
+          std::cout << "LUI";
+          break;
+        case Opcode::AUIPC:
+          std::cout << "AUIPC";
+          break;
       }
 
       std::cout << " instruction @ PC " << std::setfill('0') << std::setw(8)
@@ -216,7 +222,15 @@ void rv32i_io::Core::ProcessDecode(
   };
 
   uint32_t opcode = (ifid.inst) & 0b1111111;
-  if (opcode == 0b0010011) {
+  if (opcode == 0b0110111) {
+    next_idex.opcode = Opcode::LUI;
+    next_idex.rd = (ifid.inst >> 7) & 0b11111;
+    next_idex.imm = (ifid.inst >> 12);
+  } else if (opcode == 0b0010111) {
+    next_idex.opcode = Opcode::AUIPC;
+    next_idex.rd = (ifid.inst >> 7) & 0b11111;
+    next_idex.imm = (ifid.inst >> 12);
+  } else if (opcode == 0b0010011) {
     next_idex.rd = (ifid.inst >> 7) & 0b11111;
 
     uint32_t imm = (ifid.inst >> 20) & 0b111111111111;
@@ -348,6 +362,12 @@ void rv32i_io::Core::ProcessExecute(ExMemRegister& next_exmem,
   next_exmem.rd = idex.rd;
 
   switch (idex.opcode) {
+    case Opcode::LUI:
+      next_exmem.v = idex.imm << 12;
+      break;
+    case Opcode::AUIPC:
+      next_exmem.v = (idex.imm << 12) + idex.pc;
+      break;
     case Opcode::ADDI:
       next_exmem.v = idex.v1 + idex.imm;
       break;
@@ -424,6 +444,7 @@ void rv32i_io::Core::ProcessExecute(ExMemRegister& next_exmem,
   }
 
   switch (idex.opcode) {
+    case Opcode::LUI:
     case Opcode::ADDI:
     case Opcode::SLTI:
     case Opcode::SLTIU:
@@ -471,6 +492,7 @@ void rv32i_io::Core::ProcessMemory(MemWbRegister& next_memwb,
   next_memwb.rd = exmem.rd;
 
   switch (exmem.opcode) {
+    case Opcode::LUI:
     case Opcode::ADDI:
     case Opcode::SLTI:
     case Opcode::SLTIU:
@@ -503,5 +525,5 @@ void rv32i_io::Core::ProcessMemory(MemWbRegister& next_memwb,
 void rv32i_io::Core::ProcessWriteback(
     std::array<uint32_t, 32>& next_user_registers) {
   next_user_registers = user_registers;
-  if (memwb.valid) next_user_registers[memwb.rd] = memwb.v;
+  if (memwb.valid && !memwb.illegal) next_user_registers[memwb.rd] = memwb.v;
 }
