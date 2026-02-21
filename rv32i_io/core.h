@@ -28,6 +28,18 @@ struct ReadOnlyMemory : IMemory {
 
 namespace rv32i_io {
 
+enum class Opcode {
+  ADD,
+  SLT,
+  SLTU,
+  XOR,
+  OR,
+  AND,
+  SLL,
+  SRL,
+  SRA,
+};
+
 struct IfIdRegister {
   bool valid;
   uint32_t pc;
@@ -41,9 +53,10 @@ struct IdExRegister {
 
   uint32_t pc;
 
-  uint32_t rd;
+  Opcode opcode;
   uint32_t v1;
   uint32_t v2;
+  uint32_t rd;
 };
 
 struct ExMemRegister {
@@ -52,8 +65,9 @@ struct ExMemRegister {
 
   uint32_t pc;
 
-  uint32_t rd;
+  Opcode opcode;
   uint32_t v;
+  uint32_t rd;
 };
 
 struct MemWbRegister {
@@ -62,8 +76,8 @@ struct MemWbRegister {
 
   uint32_t pc;
 
-  uint32_t rd;
   uint32_t v;
+  uint32_t rd;
 };
 
 SC_MODULE(Core) {

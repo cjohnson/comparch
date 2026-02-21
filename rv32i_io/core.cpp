@@ -65,8 +65,8 @@ void rv32i_io::Core::Process() {
 
     next_memwb.pc = exmem.pc;
 
-    next_memwb.rd = exmem.rd;
     next_memwb.v = exmem.v;
+    next_memwb.rd = exmem.rd;
   }
 
   ExMemRegister next_exmem;
@@ -78,8 +78,47 @@ void rv32i_io::Core::Process() {
 
     next_exmem.pc = idex.pc;
 
+    next_exmem.opcode = idex.opcode;
     next_exmem.rd = idex.rd;
-    next_exmem.v = idex.v1 + idex.v2;
+
+    switch (idex.opcode) {
+      case Opcode::ADD:
+        next_exmem.v = idex.v1 + idex.v2;
+        break;
+      case Opcode::SLT: {
+        int32_t sv1 = (int32_t)idex.v1;
+        int32_t sv2 = (int32_t)idex.v2;
+        next_exmem.v = (sv1 < sv2) ? 1 : 0;
+        break;
+      }
+      case Opcode::SLTU:
+        next_exmem.v = (idex.v1 < idex.v2) ? 1 : 0;
+        break;
+      case Opcode::XOR:
+        next_exmem.v = idex.v1 ^ idex.v2;
+        break;
+      case Opcode::OR:
+        next_exmem.v = idex.v1 | idex.v2;
+        break;
+      case Opcode::AND:
+        next_exmem.v = idex.v1 & idex.v2;
+        break;
+      case Opcode::SLL:
+        next_exmem.v = idex.v1 << idex.v2;
+        break;
+      case Opcode::SRL:
+        next_exmem.v = idex.v1 >> idex.v2;
+        break;
+      case Opcode::SRA: {
+        int32_t sv1 = (int32_t)idex.v1;
+        int32_t sv2 = (int32_t)idex.v2;
+        next_exmem.v = sv1 >> sv2;
+        break;
+      }
+      default:
+        next_exmem.v = 0;
+        break;
+    }
   }
 
   IdExRegister next_idex;
@@ -91,24 +130,74 @@ void rv32i_io::Core::Process() {
 
     next_idex.pc = ifid.pc;
 
+    auto sign_extend = [](uint32_t x, uint32_t b) {
+      int m = 1U << (b - 1);
+      return (x ^ m) - m;
+    };
+
+    auto read_register = [&](uint32_t r) {
+      if (next_exmem.valid && next_exmem.rd == r) return next_exmem.v;
+      return next_user_registers[r];
+    };
+
     uint32_t opcode = (ifid.inst) & 0b1111111;
     if (opcode == 0b0010011) {
       next_idex.rd = (ifid.inst >> 7) & 0b11111;
       uint32_t funct3 = (ifid.inst >> 12) & 0b111;
 
-      if (funct3 == 0b000) {
-        uint32_t rs1 = (ifid.inst >> 15) & 0b11111;
+      uint32_t rs1 = (ifid.inst >> 15) & 0b11111;
+      next_idex.v1 = read_register(rs1);
 
-        if (next_exmem.valid && next_exmem.rd == rs1)
-          next_idex.v1 = next_exmem.v;
-        else
-          next_idex.v1 = next_user_registers[rs1];
+      uint32_t imm = (ifid.inst >> 20) & 0b111111111111;
 
-        uint32_t imm = (ifid.inst >> 20) & 0b111111111111;
-        int m = 1U << (12 - 1);
-        imm = (imm ^ m) - m;
+      switch (funct3) {
+        case 0b000:
+          next_idex.opcode = Opcode::ADD;
+          break;
+        case 0b010:
+          next_idex.opcode = Opcode::SLT;
+          break;
+        case 0b011:
+          next_idex.opcode = Opcode::SLTU;
+          break;
+        case 0b100:
+          next_idex.opcode = Opcode::XOR;
+          break;
+        case 0b110:
+          next_idex.opcode = Opcode::OR;
+          break;
+        case 0b111:
+          next_idex.opcode = Opcode::AND;
+          break;
+        case 0b001:
+          next_idex.opcode = Opcode::SLL;
+          break;
+        case 0b101: {
+          int arithmetic_flag = (imm >> 10) & 0x1;
+          next_idex.opcode = arithmetic_flag ? Opcode::SRA : Opcode::SRL;
+          break;
+        }
+        default:
+          next_idex.illegal = true;
+          break;
+      }
 
-        next_idex.v2 = imm;
+      switch (funct3) {
+        case 0b000:
+        case 0b010:
+        case 0b011:
+        case 0b100:
+        case 0b110:
+        case 0b111:
+          next_idex.v2 = sign_extend(imm, 12);
+          break;
+        case 0b001:
+        case 0b101:
+          next_idex.v2 = imm & 0b11111;
+          break;
+        default:
+          next_idex.illegal = true;
+          break;
       }
     } else {
       next_idex.illegal = true;
