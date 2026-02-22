@@ -50,24 +50,6 @@ bool ReadOnlyMemory::Read8(uint32_t address, uint8_t& data) {
 }
 
 void rv32i_io::Core::Process() {
-  std::array<uint32_t, 32> next_user_registers;
-  ProcessWriteback(next_user_registers);
-
-  MemWbRegister next_memwb;
-  ForwardPacket mem_forward;
-  ProcessMemory(next_memwb, mem_forward);
-
-  ExMemRegister next_exmem;
-  ForwardPacket ex_forward;
-  ProcessExecute(next_exmem, ex_forward);
-
-  IdExRegister next_idex;
-  ProcessDecode(next_user_registers, ex_forward, mem_forward, next_idex);
-
-  uint32_t next_pc;
-  IfIdRegister next_ifid;
-  ProcessFetch(next_pc, next_ifid);
-
   if (rst) {
     pc = 0;
     ifid.valid = 0;
@@ -78,17 +60,39 @@ void rv32i_io::Core::Process() {
     exmem.valid = 0;
 
     memwb.valid = 0;
-  } else {
-    pc = next_pc;
-    ifid = next_ifid;
 
-    user_registers = next_user_registers;
-    idex = next_idex;
-
-    exmem = next_exmem;
-
-    memwb = next_memwb;
+    return;
   }
+
+  std::array<uint32_t, 32> next_user_registers;
+  ProcessWriteback(next_user_registers);
+
+  MemWbRegister next_memwb;
+  ForwardPacket mem_forward;
+  ProcessMemory(next_memwb, mem_forward);
+
+  ExMemRegister next_exmem;
+  ForwardPacket ex_forward;
+  NextInstructionMispredictPacket mispredict;
+  ProcessExecute(next_exmem, ex_forward, mispredict);
+
+  IdExRegister next_idex;
+  ProcessDecode(next_user_registers, ex_forward, mem_forward, mispredict,
+                next_idex);
+
+  uint32_t next_pc;
+  IfIdRegister next_ifid;
+  ProcessFetch(mispredict, next_pc, next_ifid);
+
+  pc = next_pc;
+  ifid = next_ifid;
+
+  user_registers = next_user_registers;
+  idex = next_idex;
+
+  exmem = next_exmem;
+
+  memwb = next_memwb;
 
   if (memwb.valid) {
     if (memwb.illegal) {
@@ -101,6 +105,18 @@ void rv32i_io::Core::Process() {
                 << " [TRACE] [HART 0]: Retired ";
 
       switch (memwb.opcode) {
+        case Opcode::LUI:
+          std::cout << "LUI";
+          break;
+        case Opcode::AUIPC:
+          std::cout << "AUIPC";
+          break;
+        case Opcode::JAL:
+          std::cout << "JAL";
+          break;
+        case Opcode::JALR:
+          std::cout << "JALR";
+          break;
         case Opcode::ADDI:
           std::cout << "ADDI";
           break;
@@ -158,12 +174,6 @@ void rv32i_io::Core::Process() {
         case Opcode::AND:
           std::cout << "AND";
           break;
-        case Opcode::LUI:
-          std::cout << "LUI";
-          break;
-        case Opcode::AUIPC:
-          std::cout << "AUIPC";
-          break;
       }
 
       std::cout << " instruction @ PC " << std::setfill('0') << std::setw(8)
@@ -172,10 +182,17 @@ void rv32i_io::Core::Process() {
   }
 }
 
-void rv32i_io::Core::ProcessFetch(uint32_t& next_pc, IfIdRegister& next_ifid) {
+void rv32i_io::Core::ProcessFetch(
+    const NextInstructionMispredictPacket& mispredict, uint32_t& next_pc,
+    IfIdRegister& next_ifid) {
   next_pc = pc;
 
   next_ifid.valid = false;
+
+  if (mispredict.valid) {
+    next_pc = mispredict.pc;
+    return;
+  }
 
   uint32_t inst;
   if (!memory->Read32LE(pc, inst)) return;
@@ -183,21 +200,26 @@ void rv32i_io::Core::ProcessFetch(uint32_t& next_pc, IfIdRegister& next_ifid) {
   next_pc = pc + 4;
 
   next_ifid.valid = true;
-  next_ifid.inst = inst;
+
   next_ifid.pc = pc;
+  next_ifid.next_pc = next_pc;
+
+  next_ifid.inst = inst;
 }
 
 void rv32i_io::Core::ProcessDecode(
     const std::array<uint32_t, 32>& next_user_registers,
     const ForwardPacket& ex_forward, const ForwardPacket& mem_forward,
+    const NextInstructionMispredictPacket& mispredict,
     IdExRegister& next_idex) {
   next_idex.valid = false;
-  if (!ifid.valid) return;
+  if (!ifid.valid || mispredict.valid) return;
 
   next_idex.valid = true;
   next_idex.illegal = false;
 
   next_idex.pc = ifid.pc;
+  next_idex.next_pc = ifid.next_pc;
 
   auto sign_extend = [](uint32_t x, uint32_t b) {
     int m = 1U << (b - 1);
@@ -230,6 +252,29 @@ void rv32i_io::Core::ProcessDecode(
     next_idex.opcode = Opcode::AUIPC;
     next_idex.rd = (ifid.inst >> 7) & 0b11111;
     next_idex.imm = (ifid.inst >> 12);
+  } else if (opcode == 0b1101111) {
+    next_idex.opcode = Opcode::JAL;
+    next_idex.rd = (ifid.inst >> 7) & 0b11111;
+
+    next_idex.imm = 0;
+    next_idex.imm |= (((ifid.inst >> 21) & 0b1111111111) << 1);
+    next_idex.imm |= (((ifid.inst >> 20) & 0b1) << 11);
+    next_idex.imm |= (((ifid.inst >> 12) & 0b11111111) << 12);
+    next_idex.imm |= (((ifid.inst >> 31) & 0b1) << 20);
+
+    next_idex.imm = sign_extend(next_idex.imm, 20);
+  } else if (opcode == 0b1100111) {
+    next_idex.opcode = Opcode::JALR;
+    next_idex.rd = (ifid.inst >> 7) & 0b11111;
+
+    uint32_t rs1 = (ifid.inst >> 15) & 0b11111;
+    if (!read_register(rs1, next_idex.v1)) {
+      next_idex.valid = false;
+      return;
+    }
+
+    next_idex.imm = (ifid.inst >> 20);
+    next_idex.imm = sign_extend(next_idex.imm, 12);
   } else if (opcode == 0b0010011) {
     next_idex.rd = (ifid.inst >> 7) & 0b11111;
 
@@ -345,11 +390,14 @@ void rv32i_io::Core::ProcessDecode(
   }
 }
 
-void rv32i_io::Core::ProcessExecute(ExMemRegister& next_exmem,
-                                    ForwardPacket& forward) {
+void rv32i_io::Core::ProcessExecute(
+    ExMemRegister& next_exmem, ForwardPacket& forward,
+    NextInstructionMispredictPacket& mispredict) {
   next_exmem.valid = false;
 
   forward.valid = false;
+
+  mispredict.valid = false;
 
   if (!idex.valid) return;
 
@@ -368,6 +416,26 @@ void rv32i_io::Core::ProcessExecute(ExMemRegister& next_exmem,
     case Opcode::AUIPC:
       next_exmem.v = (idex.imm << 12) + idex.pc;
       break;
+    case Opcode::JAL: {
+      next_exmem.v = idex.pc + 4;
+
+      uint32_t next_pc = idex.pc + idex.imm;
+      if (next_pc != idex.next_pc) {
+        mispredict.valid = true;
+        mispredict.pc = next_pc;
+      }
+      break;
+    }
+    case Opcode::JALR: {
+      next_exmem.v = idex.pc + 4;
+
+      uint32_t next_pc = idex.v1 + idex.imm;
+      if (next_pc != idex.next_pc) {
+        mispredict.valid = true;
+        mispredict.pc = next_pc;
+      }
+      break;
+    }
     case Opcode::ADDI:
       next_exmem.v = idex.v1 + idex.imm;
       break;
@@ -445,6 +513,9 @@ void rv32i_io::Core::ProcessExecute(ExMemRegister& next_exmem,
 
   switch (idex.opcode) {
     case Opcode::LUI:
+    case Opcode::AUIPC:
+    case Opcode::JAL:
+    case Opcode::JALR:
     case Opcode::ADDI:
     case Opcode::SLTI:
     case Opcode::SLTIU:
@@ -493,6 +564,9 @@ void rv32i_io::Core::ProcessMemory(MemWbRegister& next_memwb,
 
   switch (exmem.opcode) {
     case Opcode::LUI:
+    case Opcode::AUIPC:
+    case Opcode::JAL:
+    case Opcode::JALR:
     case Opcode::ADDI:
     case Opcode::SLTI:
     case Opcode::SLTIU:

@@ -31,6 +31,8 @@ namespace rv32i_io {
 enum class Opcode {
   LUI,
   AUIPC,
+  JAL,
+  JALR,
   ADDI,
   SLTI,
   SLTIU,
@@ -54,7 +56,9 @@ enum class Opcode {
 
 struct IfIdRegister {
   bool valid;
+
   uint32_t pc;
+  uint32_t next_pc;
 
   uint32_t inst;
 };
@@ -63,8 +67,10 @@ struct IdExRegister {
   bool valid;
   bool illegal;
 
-  Opcode opcode;
   uint32_t pc;
+  uint32_t next_pc;
+
+  Opcode opcode;
   uint32_t rd;
 
   uint32_t v1;
@@ -102,6 +108,11 @@ struct ForwardPacket {
   uint32_t data;
 };
 
+struct NextInstructionMispredictPacket {
+  bool valid;
+  uint32_t pc;
+};
+
 SC_MODULE(Core) {
   sc_in_clk clk{"clk"};
   sc_in<bool> rst{"rst"};
@@ -115,11 +126,15 @@ SC_MODULE(Core) {
 
   void Process();
 
-  void ProcessFetch(uint32_t& next_pc, IfIdRegister& next_ifid);
+  void ProcessFetch(const NextInstructionMispredictPacket& mispredict,
+                    uint32_t& next_pc, IfIdRegister& next_ifid);
   void ProcessDecode(const std::array<uint32_t, 32>& next_user_registers,
                      const ForwardPacket& ex_forward,
-                     const ForwardPacket& mem_forward, IdExRegister& next_idex);
-  void ProcessExecute(ExMemRegister & next_exmem, ForwardPacket & forward);
+                     const ForwardPacket& mem_forward,
+                     const NextInstructionMispredictPacket& mispredict,
+                     IdExRegister& next_idex);
+  void ProcessExecute(ExMemRegister & next_exmem, ForwardPacket & forward,
+                      NextInstructionMispredictPacket & mispredict);
   void ProcessMemory(MemWbRegister & next_memwb, ForwardPacket & forward);
   void ProcessWriteback(std::array<uint32_t, 32> & next_user_registers);
 

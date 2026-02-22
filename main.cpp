@@ -28,7 +28,7 @@ int sc_main(int argc, char** argv) {
   sc_start(1, SC_NS);
 
   rst = false;
-  sc_start(10, SC_NS);
+  sc_start(12, SC_NS);
 
   std::cout << "\n";
   std::cout << "Final machine state:\n";
