@@ -2,10 +2,13 @@
 .global _start
 
 _start:
-  jal ra, foo
-  addi x6, x5, 1
+  li x5, 1
+  li x6, 2
+  beq x5, x6, _L1
+_L0:
+  li x7, 1
+  j _L2
+_L1:
+  li x7, 2
+_L2:
   wfi
-
-foo:
-  li x5, 23
-  jalr zero, ra, 0

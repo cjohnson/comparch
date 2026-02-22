@@ -117,6 +117,9 @@ void rv32i_io::Core::Process() {
         case Opcode::JALR:
           std::cout << "JALR";
           break;
+        case Opcode::BEQ:
+          std::cout << "BEQ";
+          break;
         case Opcode::ADDI:
           std::cout << "ADDI";
           break;
@@ -263,6 +266,36 @@ void rv32i_io::Core::ProcessDecode(
     next_idex.imm |= (((ifid.inst >> 31) & 0b1) << 20);
 
     next_idex.imm = sign_extend(next_idex.imm, 20);
+  } else if (opcode == 0b1100011) {
+    uint32_t funct3 = (ifid.inst >> 12) & 0b111;
+
+    switch (funct3) {
+      case 0b000:
+        next_idex.opcode = Opcode::BEQ;
+        break;
+      default:
+        next_idex.illegal = true;
+        break;
+    }
+
+    uint32_t rs1 = (ifid.inst >> 15) & 0b11111;
+    if (!read_register(rs1, next_idex.v1)) {
+      next_idex.valid = false;
+      return;
+    }
+
+    uint32_t rs2 = (ifid.inst >> 20) & 0b11111;
+    if (!read_register(rs2, next_idex.v2)) {
+      next_idex.valid = false;
+      return;
+    }
+
+    next_idex.imm = 0;
+    next_idex.imm |= (((ifid.inst >> 8) & 0b1111) << 1);
+    next_idex.imm |= (((ifid.inst >> 25) & 0b111111) << 5);
+    next_idex.imm |= (((ifid.inst >> 7) & 0b1) << 11);
+    next_idex.imm |= (((ifid.inst >> 31) & 0b1) << 12);
+    next_idex.imm = sign_extend(next_idex.imm, 12);
   } else if (opcode == 0b1100111) {
     next_idex.opcode = Opcode::JALR;
     next_idex.rd = (ifid.inst >> 7) & 0b11111;
@@ -436,6 +469,17 @@ void rv32i_io::Core::ProcessExecute(
       }
       break;
     }
+    case Opcode::BEQ: {
+      uint32_t next_pc = idex.pc + 4;
+      if (idex.v1 == idex.v2)
+        next_pc = idex.pc + idex.imm;
+
+      if (next_pc != idex.next_pc) {
+        mispredict.valid = true;
+        mispredict.pc = next_pc;
+      }
+      break;
+    }
     case Opcode::ADDI:
       next_exmem.v = idex.v1 + idex.imm;
       break;
@@ -535,7 +579,7 @@ void rv32i_io::Core::ProcessExecute(
     case Opcode::SRA:
     case Opcode::OR:
     case Opcode::AND:
-      forward.valid = true;
+      forward.valid = exmem.rd != 0;
       forward.rd = idex.rd;
       forward.data_valid = true;
       forward.data = next_exmem.v;
@@ -586,7 +630,7 @@ void rv32i_io::Core::ProcessMemory(MemWbRegister& next_memwb,
     case Opcode::SRA:
     case Opcode::OR:
     case Opcode::AND:
-      forward.valid = true;
+      forward.valid = exmem.rd != 0;
       forward.rd = exmem.rd;
       forward.data_valid = true;
       forward.data = next_memwb.v;
@@ -599,5 +643,5 @@ void rv32i_io::Core::ProcessMemory(MemWbRegister& next_memwb,
 void rv32i_io::Core::ProcessWriteback(
     std::array<uint32_t, 32>& next_user_registers) {
   next_user_registers = user_registers;
-  if (memwb.valid && !memwb.illegal) next_user_registers[memwb.rd] = memwb.v;
+  if (memwb.valid && !memwb.illegal && memwb.rd != 0) next_user_registers[memwb.rd] = memwb.v;
 }

@@ -33,6 +33,7 @@ enum class Opcode {
   AUIPC,
   JAL,
   JALR,
+  BEQ,
   ADDI,
   SLTI,
   SLTIU,
