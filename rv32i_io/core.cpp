@@ -6,49 +6,6 @@
 #include <iomanip>
 #include <stdexcept>
 
-bool IMemory::Read32LE(uint32_t address, uint32_t& data) {
-  uint8_t byte;
-  uint32_t out = 0;
-
-  if (!Read8(address + 0u, byte)) return false;
-  out |= byte << 0u;
-
-  if (!Read8(address + 1u, byte)) return false;
-  out |= byte << 8u;
-
-  if (!Read8(address + 2u, byte)) return false;
-  out |= byte << 16u;
-
-  if (!Read8(address + 3u, byte)) return false;
-  out |= byte << 24u;
-
-  data = out;
-  return true;
-}
-
-ReadOnlyMemory::ReadOnlyMemory(size_t size) : size_(size) {}
-
-void ReadOnlyMemory::LoadBinary(const std::string& filename) {
-  std::ifstream file(filename, std::ios::binary);
-  if (!file) throw std::runtime_error{"Failed to open binary file"};
-
-  file.seekg(0, std::ios::end);
-  size_t size = file.tellg();
-  file.seekg(0, std::ios::beg);
-
-  if (size > memory_.size()) memory_.resize(size);
-
-  file.read(reinterpret_cast<char*>(&memory_[0]), size);
-}
-
-bool ReadOnlyMemory::Read8(uint32_t address, uint8_t& data) {
-  if (address >= memory_.size())
-    data = 0;
-  else
-    data = memory_[address];
-  return true;
-}
-
 void rv32i_io::Core::Process() {
   if (rst) {
     pc = 0;

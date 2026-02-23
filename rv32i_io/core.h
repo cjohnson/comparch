@@ -6,25 +6,8 @@
 #include <systemc.h>
 
 #include <array>
-#include <vector>
 
-struct IMemory : sc_interface {
-  virtual bool Read8(uint32_t address, uint8_t& data) = 0;
-
-  virtual bool Read32LE(uint32_t address, uint32_t& data);
-};
-
-struct ReadOnlyMemory : IMemory {
-  ReadOnlyMemory(size_t size);
-
-  void LoadBinary(const std::string& filename);
-
-  bool Read8(uint32_t address, uint8_t& data) override;
-
- private:
-  std::vector<uint8_t> memory_;
-  size_t size_;
-};
+#include "memory/interface.h"
 
 namespace rv32i_io {
 
@@ -123,7 +106,7 @@ SC_MODULE(Core) {
   sc_in_clk clk{"clk"};
   sc_in<bool> rst{"rst"};
 
-  sc_port<IMemory> memory{"memory"};
+  sc_port<memory::IMemory> memory{"memory"};
 
   SC_CTOR(Core) {
     SC_METHOD(Process);

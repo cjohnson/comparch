@@ -2,6 +2,7 @@
 
 #include <systemc.h>
 
+#include "memory/virtual_flash.h"
 #include "rv32i_io/core.h"
 
 int sc_main(int argc, char** argv) {
@@ -14,8 +15,8 @@ int sc_main(int argc, char** argv) {
   sc_clock clk{"clock", 1, SC_NS};
   sc_signal<bool> rst;
 
-  ReadOnlyMemory rom{64 * (1 << 10)};
-  rom.LoadBinary(firmware_binary_path);
+  memory::VirtualFlash rom{64 * (1 << 10)};
+  rom.LoadImageFromFile(firmware_binary_path);
 
   rv32i_io::Core core{"core"};
   core.clk(clk);

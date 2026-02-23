@@ -18,6 +18,10 @@ endif()
 set(CMAKE_PREFIX_PATH ${SYSTEMC_HOME})
 find_package(SystemCLanguage CONFIG REQUIRED)
 
+add_library(memory memory/virtual_flash.cpp memory/interface.cpp)
+target_include_directories(memory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(memory SystemC::systemc)
+
 add_library(rv32i_io rv32i_io/core.cpp)
 target_include_directories(rv32i_io PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(rv32i_io SystemC::systemc)
@@ -25,4 +29,6 @@ target_link_libraries(rv32i_io SystemC::systemc)
 add_executable(comparch main.cpp)
 target_link_libraries(comparch
   rv32i_io
+  memory
   SystemC::systemc)
+target_include_directories(comparch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
