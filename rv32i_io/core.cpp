@@ -132,6 +132,9 @@ void rv32i_io::Core::Process() {
         case Opcode::BLTU:
           std::cout << "BLTU";
           break;
+        case Opcode::BGEU:
+          std::cout << "BGEU";
+          break;
         case Opcode::ADDI:
           std::cout << "ADDI";
           break;
@@ -296,6 +299,9 @@ void rv32i_io::Core::ProcessDecode(
         break;
       case 0b110:
         next_idex.opcode = Opcode::BLTU;
+        break;
+      case 0b111:
+        next_idex.opcode = Opcode::BGEU;
         break;
       default:
         next_idex.illegal = true;
@@ -547,6 +553,18 @@ void rv32i_io::Core::ProcessExecute(
       uint32_t next_pc = idex.pc + 4;
 
       if (idex.v1 < idex.v2)
+        next_pc = idex.pc + idex.imm;
+
+      if (next_pc != idex.next_pc) {
+        mispredict.valid = true;
+        mispredict.pc = next_pc;
+      }
+      break;
+    }
+    case Opcode::BGEU: {
+      uint32_t next_pc = idex.pc + 4;
+
+      if (idex.v1 >= idex.v2)
         next_pc = idex.pc + idex.imm;
 
       if (next_pc != idex.next_pc) {
