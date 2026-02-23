@@ -123,6 +123,9 @@ void rv32i_io::Core::Process() {
         case Opcode::BNE:
           std::cout << "BNE";
           break;
+        case Opcode::BLT:
+          std::cout << "BLT";
+          break;
         case Opcode::ADDI:
           std::cout << "ADDI";
           break;
@@ -278,6 +281,9 @@ void rv32i_io::Core::ProcessDecode(
         break;
       case 0b001:
         next_idex.opcode = Opcode::BNE;
+        break;
+      case 0b100:
+        next_idex.opcode = Opcode::BLT;
         break;
       default:
         next_idex.illegal = true;
@@ -489,6 +495,20 @@ void rv32i_io::Core::ProcessExecute(
     case Opcode::BNE: {
       uint32_t next_pc = idex.pc + 4;
       if (idex.v1 != idex.v2)
+        next_pc = idex.pc + idex.imm;
+
+      if (next_pc != idex.next_pc) {
+        mispredict.valid = true;
+        mispredict.pc = next_pc;
+      }
+      break;
+    }
+    case Opcode::BLT: {
+      uint32_t next_pc = idex.pc + 4;
+
+      int32_t sv1 = (int32_t)idex.v1;
+      int32_t sv2 = (int32_t)idex.v2;
+      if (sv1 < sv2)
         next_pc = idex.pc + idex.imm;
 
       if (next_pc != idex.next_pc) {
