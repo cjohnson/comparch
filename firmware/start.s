@@ -2,9 +2,9 @@
 .global _start
 
 _start:
-  li x5, 1
+  li x5, 3
   li x6, 2
-  blt x5, x6, _L1
+  bge x5, x6, _L1
 _L0:
   li x7, 1
   j _L2
