@@ -37,6 +37,7 @@ enum class Opcode {
   BNE,
   BLT,
   BGE,
+  BLTU,
   ADDI,
   SLTI,
   SLTIU,
