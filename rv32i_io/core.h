@@ -34,6 +34,7 @@ enum class Opcode {
   JAL,
   JALR,
   BEQ,
+  BNE,
   ADDI,
   SLTI,
   SLTIU,

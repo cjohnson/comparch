@@ -3,8 +3,8 @@
 
 _start:
   li x5, 1
-  li x6, 2
-  beq x5, x6, _L1
+  li x6, 1
+  bne x5, x6, _L1
 _L0:
   li x7, 1
   j _L2
