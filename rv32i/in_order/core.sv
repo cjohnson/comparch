@@ -179,10 +179,10 @@ endmodule : virtual_flash
 `define RV32_OP 7'b0110011
 `define RV32_OP_IMM 7'b0010011
 
-`define RV32_R_TYPE_INSTRUCTION(
-    opcode, funct3, funct7) {``funct7``, {5{1'b?}}, {5{1'b?}}, ``funct3``, {5{1'b?}}, ``opcode``}
-`define RV32_I_TYPE_INSTRUCTION(opcode,
-                                funct3) {{12{1'b?}}, {5{1'b?}}, ``funct3``, {5{1'b?}}, ``opcode``}
+`define RV32_R_TYPE_INSTRUCTION(opcode, funct3, funct7) \
+    {``funct7``, {5{1'b?}}, {5{1'b?}}, ``funct3``, {5{1'b?}}, ``opcode``}
+`define RV32_I_TYPE_INSTRUCTION(opcode, funct3) \
+                                {{12{1'b?}}, {5{1'b?}}, ``funct3``, {5{1'b?}}, ``opcode``}
 
 `define RV32_ADDI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b000)
 `define RV32_SLTI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b010)
@@ -196,6 +196,8 @@ endmodule : virtual_flash
 `define RV32_ADD `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b000, 7'b0000000)
 `define RV32_SUB `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b000, 7'b0100000)
 `define RV32_SLL `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b001, 7'b0000000)
+`define RV32_SLT `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b010, 7'b0000000)
+`define RV32_SLTU `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b011, 7'b0000000)
 
 `define RV32_I_TYPE_SIGN_EXTEND(instruction) {{21{``instruction``[31]}}, ``instruction``[30:20]}
 
@@ -461,6 +463,26 @@ module rv32i_in_order_core_decoder (
         alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
         alu_operand_b_select = ALU_OPERAND_B_SELECT_RS2;
         alu_opcode = ALU_SLL;
+      end
+      `RV32_SLT: begin
+        destination_register = instruction.r_type_instruction.rd;
+
+        rs1_index = instruction.r_type_instruction.rs1;
+        rs2_index = instruction.r_type_instruction.rs2;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_RS2;
+        alu_opcode = ALU_SLT;
+      end
+      `RV32_SLTU: begin
+        destination_register = instruction.r_type_instruction.rd;
+
+        rs1_index = instruction.r_type_instruction.rs1;
+        rs2_index = instruction.r_type_instruction.rs2;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_RS2;
+        alu_opcode = ALU_SLTU;
       end
       default: begin
         illegal = `TRUE;

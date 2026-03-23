@@ -3,4 +3,6 @@
 
 _start:
   li x1, 1
-  sll x2, x1, x1
+  li x2, 2
+  sltu x3, x1, x2
+  sltu x4, x2, x1
