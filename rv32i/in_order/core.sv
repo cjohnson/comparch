@@ -176,6 +176,7 @@ endmodule : virtual_flash
 `define FALSE 1'b0
 `define TRUE 1'b1
 
+`define RV32_OP 7'b0110011
 `define RV32_OP_IMM 7'b0010011
 
 `define RV32_R_TYPE_INSTRUCTION(
@@ -192,8 +193,18 @@ endmodule : virtual_flash
 `define RV32_SLLI `RV32_R_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b001, 7'b0000000)
 `define RV32_SRLI `RV32_R_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b101, 7'b0000000)
 `define RV32_SRAI `RV32_R_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b101, 7'b0100000)
+`define RV32_ADD `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b000, 7'b0000000)
 
 `define RV32_I_TYPE_SIGN_EXTEND(instruction) {{21{``instruction``[31]}}, ``instruction``[30:20]}
+
+typedef struct packed {
+  logic [6:0] funct7;
+  logic [4:0] rs2;
+  logic [4:0] rs1;
+  logic [2:0] funct3;
+  logic [4:0] rd;
+  logic [6:0] opcode;
+} rv32_r_type_instruction_t;
 
 typedef struct packed {
   logic [11:0] imm;
@@ -205,12 +216,16 @@ typedef struct packed {
 
 typedef union packed {
   logic [31:0] instruction;
+  rv32_r_type_instruction_t r_type_instruction;
   rv32_i_type_instruction_t i_type_instruction;
 } rv32_instruction_t;
 
 typedef enum {ALU_OPERAND_A_SELECT_RS1} alu_operand_a_select_t;
 
-typedef enum {ALU_OPERAND_B_SELECT_I_IMM} alu_operand_b_select_t;
+typedef enum {
+  ALU_OPERAND_B_SELECT_RS2,
+  ALU_OPERAND_B_SELECT_I_IMM
+} alu_operand_b_select_t;
 
 typedef enum {
   ALU_ADD,
@@ -237,6 +252,7 @@ typedef struct packed {
   logic [4:0] destination_register;
 
   logic [31:0] rs1_value;
+  logic [31:0] rs2_value;
 
   alu_operand_a_select_t alu_operand_a_select;
   alu_operand_b_select_t alu_operand_b_select;
@@ -311,6 +327,7 @@ module rv32i_in_order_core_decoder (
     output logic [4:0] destination_register,
 
     output logic [4:0] rs1_index,
+    output logic [4:0] rs2_index,
 
     output alu_operand_a_select_t alu_operand_a_select,
     output alu_operand_b_select_t alu_operand_b_select,
@@ -322,6 +339,7 @@ module rv32i_in_order_core_decoder (
     destination_register = '0;
 
     rs1_index = '0;
+    rs2_index = '0;
 
     alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
     alu_operand_b_select = ALU_OPERAND_B_SELECT_I_IMM;
@@ -411,6 +429,16 @@ module rv32i_in_order_core_decoder (
         alu_operand_b_select = ALU_OPERAND_B_SELECT_I_IMM;
         alu_opcode = ALU_SRA;
       end
+      `RV32_ADD: begin
+        destination_register = instruction.r_type_instruction.rd;
+
+        rs1_index = instruction.r_type_instruction.rs1;
+        rs2_index = instruction.r_type_instruction.rs2;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_RS2;
+        alu_opcode = ALU_ADD;
+      end
       default: begin
         illegal = `TRUE;
       end
@@ -452,6 +480,7 @@ module rv32i_in_order_core_instruction_decode_stage (
   end
 
   logic [4:0] rs1_index;
+  logic [4:0] rs2_index;
 
   rv32i_in_order_core_decoder decoder_0 (
       .instruction(ifid_packet.instruction),
@@ -459,6 +488,7 @@ module rv32i_in_order_core_instruction_decode_stage (
       .destination_register(idex_packet.destination_register),
 
       .rs1_index(rs1_index),
+      .rs2_index(rs2_index),
 
       .alu_operand_a_select(idex_packet.alu_operand_a_select),
       .alu_operand_b_select(idex_packet.alu_operand_b_select),
@@ -470,6 +500,7 @@ module rv32i_in_order_core_instruction_decode_stage (
   assign idex_packet.instruction = ifid_packet.instruction;
 
   assign idex_packet.rs1_value = next_general_purpose_registers[rs1_index];
+  assign idex_packet.rs2_value = next_general_purpose_registers[rs2_index];
 
   assign idex_packet.program_counter = ifid_packet.program_counter;
   assign idex_packet.valid = ifid_packet.valid;
@@ -516,6 +547,7 @@ module rv32i_in_order_core_instruction_execute_stage (
 
   always_comb begin
     case (idex_packet.alu_operand_b_select)
+      ALU_OPERAND_B_SELECT_RS2: right_hand_side_operand = idex_packet.rs2_value;
       ALU_OPERAND_B_SELECT_I_IMM:
       right_hand_side_operand = `RV32_I_TYPE_SIGN_EXTEND(idex_packet.instruction);
       default: right_hand_side_operand = 32'hffffffff;
