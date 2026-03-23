@@ -176,35 +176,40 @@ endmodule : virtual_flash
 `define FALSE 1'b0
 `define TRUE 1'b1
 
-`define RV32_OP 7'b0110011
-`define RV32_OP_IMM 7'b0010011
+`define RV32_BASE_OPCODE_LUI 7'b0110111
+`define RV32_BASE_OPCODE_OP 7'b0110011
+`define RV32_BASE_OPCODE_OP_IMM 7'b0010011
 
 `define RV32_R_TYPE_INSTRUCTION(opcode, funct3, funct7) \
     {``funct7``, {5{1'b?}}, {5{1'b?}}, ``funct3``, {5{1'b?}}, ``opcode``}
 `define RV32_I_TYPE_INSTRUCTION(opcode, funct3) \
                                 {{12{1'b?}}, {5{1'b?}}, ``funct3``, {5{1'b?}}, ``opcode``}
+`define RV32_U_TYPE_INSTRUCTION(opcode) \
+                                {{20{1'b?}}, {5{1'b?}}, ``opcode``}
 
-`define RV32_ADDI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b000)
-`define RV32_SLTI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b010)
-`define RV32_SLTIU `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b011)
-`define RV32_XORI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b100)
-`define RV32_ORI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b110)
-`define RV32_ANDI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b111)
-`define RV32_SLLI `RV32_R_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b001, 7'b0000000)
-`define RV32_SRLI `RV32_R_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b101, 7'b0000000)
-`define RV32_SRAI `RV32_R_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b101, 7'b0100000)
-`define RV32_ADD `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b000, 7'b0000000)
-`define RV32_SUB `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b000, 7'b0100000)
-`define RV32_SLL `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b001, 7'b0000000)
-`define RV32_SLT `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b010, 7'b0000000)
-`define RV32_SLTU `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b011, 7'b0000000)
-`define RV32_XOR `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b100, 7'b0000000)
-`define RV32_SRL `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b101, 7'b0000000)
-`define RV32_SRA `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b101, 7'b0100000)
-`define RV32_OR `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b110, 7'b0000000)
-`define RV32_AND `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b111, 7'b0000000)
+`define RV32_LUI `RV32_U_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_LUI)
+`define RV32_ADDI `RV32_I_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP_IMM, 3'b000)
+`define RV32_SLTI `RV32_I_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP_IMM, 3'b010)
+`define RV32_SLTIU `RV32_I_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP_IMM, 3'b011)
+`define RV32_XORI `RV32_I_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP_IMM, 3'b100)
+`define RV32_ORI `RV32_I_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP_IMM, 3'b110)
+`define RV32_ANDI `RV32_I_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP_IMM, 3'b111)
+`define RV32_SLLI `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP_IMM, 3'b001, 7'b0000000)
+`define RV32_SRLI `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP_IMM, 3'b101, 7'b0000000)
+`define RV32_SRAI `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP_IMM, 3'b101, 7'b0100000)
+`define RV32_ADD `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP, 3'b000, 7'b0000000)
+`define RV32_SUB `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP, 3'b000, 7'b0100000)
+`define RV32_SLL `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP, 3'b001, 7'b0000000)
+`define RV32_SLT `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP, 3'b010, 7'b0000000)
+`define RV32_SLTU `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP, 3'b011, 7'b0000000)
+`define RV32_XOR `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP, 3'b100, 7'b0000000)
+`define RV32_SRL `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP, 3'b101, 7'b0000000)
+`define RV32_SRA `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP, 3'b101, 7'b0100000)
+`define RV32_OR `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP, 3'b110, 7'b0000000)
+`define RV32_AND `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP, 3'b111, 7'b0000000)
 
 `define RV32_I_TYPE_SIGN_EXTEND(instruction) {{21{``instruction``[31]}}, ``instruction``[30:20]}
+`define RV32_U_TYPE_SIGN_EXTEND(instruction) {``instruction``[31:12], {12{1'b0}}}
 
 typedef struct packed {
   logic [6:0] funct7;
@@ -223,17 +228,28 @@ typedef struct packed {
   logic [6:0]  opcode;
 } rv32_i_type_instruction_t;
 
+typedef struct packed {
+  logic [19:0] imm;
+  logic [4:0] rd;
+  logic [6:0] opcode;
+} rv32_u_type_instruction_t;
+
 typedef union packed {
   logic [31:0] instruction;
   rv32_r_type_instruction_t r_type_instruction;
   rv32_i_type_instruction_t i_type_instruction;
+  rv32_u_type_instruction_t u_type_instruction;
 } rv32_instruction_t;
 
-typedef enum {ALU_OPERAND_A_SELECT_RS1} alu_operand_a_select_t;
+typedef enum {
+  ALU_OPERAND_A_SELECT_RS1,
+  ALU_OPERAND_A_SELECT_ZERO
+} alu_operand_a_select_t;
 
 typedef enum {
   ALU_OPERAND_B_SELECT_RS2,
-  ALU_OPERAND_B_SELECT_I_IMM
+  ALU_OPERAND_B_SELECT_I_IMM,
+  ALU_OPERAND_B_SELECT_U_IMM
 } alu_operand_b_select_t;
 
 typedef enum {
@@ -358,6 +374,15 @@ module rv32i_in_order_core_decoder (
     illegal = `FALSE;
 
     casez (instruction)
+      `RV32_LUI: begin
+        destination_register = instruction.i_type_instruction.rd;
+
+        rs1_index = instruction.i_type_instruction.rs1;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_ZERO;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_U_IMM;
+        alu_opcode = ALU_ADD;
+      end
       `RV32_ADDI: begin
         destination_register = instruction.i_type_instruction.rd;
 
@@ -641,6 +666,7 @@ module rv32i_in_order_core_instruction_execute_stage (
 
   always_comb begin
     case (idex_packet.alu_operand_a_select)
+      ALU_OPERAND_A_SELECT_ZERO: left_hand_side_operand = 32'd0;
       ALU_OPERAND_A_SELECT_RS1: left_hand_side_operand = idex_packet.rs1_value;
       default: left_hand_side_operand = 32'hffffffff;
     endcase
@@ -651,6 +677,8 @@ module rv32i_in_order_core_instruction_execute_stage (
       ALU_OPERAND_B_SELECT_RS2: right_hand_side_operand = idex_packet.rs2_value;
       ALU_OPERAND_B_SELECT_I_IMM:
       right_hand_side_operand = `RV32_I_TYPE_SIGN_EXTEND(idex_packet.instruction);
+      ALU_OPERAND_B_SELECT_U_IMM:
+      right_hand_side_operand = `RV32_U_TYPE_SIGN_EXTEND(idex_packet.instruction);
       default: right_hand_side_operand = 32'hffffffff;
     endcase
   end
