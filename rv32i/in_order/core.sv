@@ -88,7 +88,7 @@ module virtual_flash (
 
     tilelink_ul_if tilelink_ul_if
 );
-  logic [1023:0][7:0] memory;
+  logic [7:0] memory[1023];
 
   typedef enum {
     CHANNEL_A_RX,
@@ -726,10 +726,24 @@ module tb;
     end
   end
 
+  int firmware_image_file, read_code;
+  string firmware_image_filename = "firmware/build/firmware.bin";
+
   initial begin
+    firmware_image_file = $fopen(firmware_image_filename, "r");
+    if (firmware_image_file == 0) begin
+      $display("Failed to open firmware binary %s.", firmware_image_filename);
+      $finish;
+    end
+
+    read_code = $fread(rom0.memory, firmware_image_file, 0, 16 * 8);
+    if (read_code == 0) begin
+      $display("Failed to read firmware binary.");
+    end else begin
+      $display("Loaded %d bytes of firmware binary into ROM.", read_code);
+    end
+
     rst = 1;
-    rom0.memory[3:0] = {12'd1, 5'd1, 3'b000, 5'd1, `RV32_OP_IMM};
-    rom0.memory[7:4] = {12'd3, 5'd1, 3'b010, 5'd2, `RV32_OP_IMM};
 
     @(negedge clk);
     rst = 0;
