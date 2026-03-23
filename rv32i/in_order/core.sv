@@ -198,6 +198,7 @@ endmodule : virtual_flash
 `define RV32_SLL `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b001, 7'b0000000)
 `define RV32_SLT `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b010, 7'b0000000)
 `define RV32_SLTU `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b011, 7'b0000000)
+`define RV32_XOR `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b100, 7'b0000000)
 
 `define RV32_I_TYPE_SIGN_EXTEND(instruction) {{21{``instruction``[31]}}, ``instruction``[30:20]}
 
@@ -483,6 +484,16 @@ module rv32i_in_order_core_decoder (
         alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
         alu_operand_b_select = ALU_OPERAND_B_SELECT_RS2;
         alu_opcode = ALU_SLTU;
+      end
+      `RV32_XOR: begin
+        destination_register = instruction.r_type_instruction.rd;
+
+        rs1_index = instruction.r_type_instruction.rs1;
+        rs2_index = instruction.r_type_instruction.rs2;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_RS2;
+        alu_opcode = ALU_XOR;
       end
       default: begin
         illegal = `TRUE;
