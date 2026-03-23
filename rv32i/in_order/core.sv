@@ -178,11 +178,20 @@ endmodule : virtual_flash
 
 `define RV32_OP_IMM 7'b0010011
 
+`define RV32_R_TYPE_INSTRUCTION(
+    opcode, funct3, funct7) {``funct7``, {5{1'b?}}, {5{1'b?}}, ``funct3``, {5{1'b?}}, ``opcode``}
 `define RV32_I_TYPE_INSTRUCTION(opcode,
                                 funct3) {{12{1'b?}}, {5{1'b?}}, ``funct3``, {5{1'b?}}, ``opcode``}
 
 `define RV32_ADDI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b000)
 `define RV32_SLTI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b010)
+`define RV32_SLTIU `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b011)
+`define RV32_XORI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b100)
+`define RV32_ORI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b110)
+`define RV32_ANDI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b111)
+`define RV32_SLLI `RV32_R_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b001, 7'b0000000)
+`define RV32_SRLI `RV32_R_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b101, 7'b0000000)
+`define RV32_SRAI `RV32_R_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b101, 7'b0100000)
 
 `define RV32_I_TYPE_SIGN_EXTEND(instruction) {{21{``instruction``[31]}}, ``instruction``[30:20]}
 
@@ -205,7 +214,14 @@ typedef enum {ALU_OPERAND_B_SELECT_I_IMM} alu_operand_b_select_t;
 
 typedef enum {
   ALU_ADD,
-  ALU_SLT
+  ALU_SLT,
+  ALU_SLTU,
+  ALU_XOR,
+  ALU_OR,
+  ALU_AND,
+  ALU_SLL,
+  ALU_SRL,
+  ALU_SRA
 } alu_opcode_t;
 
 typedef struct packed {
@@ -332,6 +348,69 @@ module rv32i_in_order_core_decoder (
         alu_operand_b_select = ALU_OPERAND_B_SELECT_I_IMM;
         alu_opcode = ALU_SLT;
       end
+      `RV32_SLTIU: begin
+        destination_register = instruction.i_type_instruction.rd;
+
+        rs1_index = instruction.i_type_instruction.rs1;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_I_IMM;
+        alu_opcode = ALU_SLTU;
+      end
+      `RV32_XORI: begin
+        destination_register = instruction.i_type_instruction.rd;
+
+        rs1_index = instruction.i_type_instruction.rs1;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_I_IMM;
+        alu_opcode = ALU_XOR;
+      end
+      `RV32_ORI: begin
+        destination_register = instruction.i_type_instruction.rd;
+
+        rs1_index = instruction.i_type_instruction.rs1;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_I_IMM;
+        alu_opcode = ALU_OR;
+      end
+      `RV32_ANDI: begin
+        destination_register = instruction.i_type_instruction.rd;
+
+        rs1_index = instruction.i_type_instruction.rs1;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_I_IMM;
+        alu_opcode = ALU_AND;
+      end
+      `RV32_SLLI: begin
+        destination_register = instruction.i_type_instruction.rd;
+
+        rs1_index = instruction.i_type_instruction.rs1;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_I_IMM;
+        alu_opcode = ALU_SLL;
+      end
+      `RV32_SRLI: begin
+        destination_register = instruction.i_type_instruction.rd;
+
+        rs1_index = instruction.i_type_instruction.rs1;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_I_IMM;
+        alu_opcode = ALU_SRL;
+      end
+      `RV32_SRAI: begin
+        destination_register = instruction.i_type_instruction.rd;
+
+        rs1_index = instruction.i_type_instruction.rs1;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_I_IMM;
+        alu_opcode = ALU_SRA;
+      end
       default: begin
         illegal = `TRUE;
       end
@@ -408,6 +487,13 @@ module alu (
       ALU_ADD: result = left_hand_side_operand + right_hand_side_operand;
       ALU_SLT:
       result = {{31{1'b0}}, signed'(left_hand_side_operand) < signed'(right_hand_side_operand)};
+      ALU_SLTU: result = {{31{1'b0}}, left_hand_side_operand < right_hand_side_operand};
+      ALU_XOR: result = left_hand_side_operand ^ right_hand_side_operand;
+      ALU_OR: result = left_hand_side_operand | right_hand_side_operand;
+      ALU_AND: result = left_hand_side_operand & right_hand_side_operand;
+      ALU_SLL: result = left_hand_side_operand << right_hand_side_operand[4:0];
+      ALU_SRL: result = left_hand_side_operand >> right_hand_side_operand[4:0];
+      ALU_SRA: result = signed'(left_hand_side_operand) >>> right_hand_side_operand[4:0];
       default: result = 32'hffffffff;
     endcase
   end
@@ -716,7 +802,7 @@ module tb;
   // Clock generator
   initial begin
     clk = 0;
-    forever clk = #20 ~clk;
+    forever clk = #10 ~clk;
   end
 
   always_comb begin
