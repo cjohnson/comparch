@@ -3,11 +3,11 @@
 `define TILELINK_CHANNEL_D_OPCODE_ACCESS_ACK_DATA 3'b001
 
 interface tilelink_ul_if #(
-    parameter DATA_BUS_WIDTH,
-    parameter ADDRESS_FIELD_WIDTH,
-    parameter SIZE_FIELD_WIDTH,
-    parameter SOURCE_IDENTIFIER_FIELD_WIDTH,
-    parameter SINK_IDENTIFIER_FIELD_WIDTH
+    parameter int DATA_BUS_WIDTH,
+    parameter int ADDRESS_FIELD_WIDTH,
+    parameter int SIZE_FIELD_WIDTH,
+    parameter int SOURCE_IDENTIFIER_FIELD_WIDTH,
+    parameter int SINK_IDENTIFIER_FIELD_WIDTH
 );
   // Channel A
   logic [2:0] a_opcode;
@@ -182,6 +182,7 @@ endmodule : virtual_flash
                                 funct3) {{12{1'b?}}, {5{1'b?}}, ``funct3``, {5{1'b?}}, ``opcode``}
 
 `define RV32_ADDI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b000)
+`define RV32_SLTI `RV32_I_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b010)
 
 `define RV32_I_TYPE_SIGN_EXTEND(instruction) {{21{``instruction``[31]}}, ``instruction``[30:20]}
 
@@ -202,7 +203,10 @@ typedef enum {ALU_OPERAND_A_SELECT_RS1} alu_operand_a_select_t;
 
 typedef enum {ALU_OPERAND_B_SELECT_I_IMM} alu_operand_b_select_t;
 
-typedef enum {ALU_ADD} alu_opcode_t;
+typedef enum {
+  ALU_ADD,
+  ALU_SLT
+} alu_opcode_t;
 
 typedef struct packed {
   rv32_instruction_t instruction;
@@ -319,6 +323,15 @@ module rv32i_in_order_core_decoder (
         alu_operand_b_select = ALU_OPERAND_B_SELECT_I_IMM;
         alu_opcode = ALU_ADD;
       end
+      `RV32_SLTI: begin
+        destination_register = instruction.i_type_instruction.rd;
+
+        rs1_index = instruction.i_type_instruction.rs1;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_I_IMM;
+        alu_opcode = ALU_SLT;
+      end
       default: begin
         illegal = `TRUE;
       end
@@ -393,6 +406,8 @@ module alu (
   always_comb begin
     case (opcode)
       ALU_ADD: result = left_hand_side_operand + right_hand_side_operand;
+      ALU_SLT:
+      result = {{31{1'b0}}, signed'(left_hand_side_operand) < signed'(right_hand_side_operand)};
       default: result = 32'hffffffff;
     endcase
   end
@@ -462,11 +477,9 @@ module rv32i_in_order_core_instruction_writeback_stage (
 endmodule : rv32i_in_order_core_instruction_writeback_stage
 
 module rv32i_in_order_core (
-    // Clock and reset signals
     input logic clk,
     input logic rst,
 
-    // TileLink interface
     tilelink_ul_if tilelink_ul_if
 );
   logic              [31:0] instruction_address;
@@ -678,7 +691,13 @@ module tb;
   logic clk;
   logic rst;
 
-  tilelink_ul_if #(4, 32, 2, 1, 1) tilelink_ul_if ();
+  tilelink_ul_if #(
+      .DATA_BUS_WIDTH(4),
+      .ADDRESS_FIELD_WIDTH(32),
+      .SIZE_FIELD_WIDTH(2),
+      .SOURCE_IDENTIFIER_FIELD_WIDTH(1),
+      .SINK_IDENTIFIER_FIELD_WIDTH(1)
+  ) tilelink_ul_if ();
 
   rv32i_in_order_core core0 (
       .clk(clk),
@@ -710,6 +729,7 @@ module tb;
   initial begin
     rst = 1;
     rom0.memory[3:0] = {12'd1, 5'd1, 3'b000, 5'd1, `RV32_OP_IMM};
+    rom0.memory[7:4] = {12'd3, 5'd1, 3'b010, 5'd2, `RV32_OP_IMM};
 
     @(negedge clk);
     rst = 0;
