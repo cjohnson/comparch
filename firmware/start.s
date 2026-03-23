@@ -3,5 +3,4 @@
 
 _start:
   li x1, 1
-  sub x2, x0, x1
-  sub x2, x1, x2
+  sll x2, x1, x1
