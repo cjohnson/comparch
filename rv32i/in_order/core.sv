@@ -194,6 +194,7 @@ endmodule : virtual_flash
 `define RV32_SRLI `RV32_R_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b101, 7'b0000000)
 `define RV32_SRAI `RV32_R_TYPE_INSTRUCTION(`RV32_OP_IMM, 3'b101, 7'b0100000)
 `define RV32_ADD `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b000, 7'b0000000)
+`define RV32_SUB `RV32_R_TYPE_INSTRUCTION(`RV32_OP, 3'b000, 7'b0100000)
 
 `define RV32_I_TYPE_SIGN_EXTEND(instruction) {{21{``instruction``[31]}}, ``instruction``[30:20]}
 
@@ -229,6 +230,7 @@ typedef enum {
 
 typedef enum {
   ALU_ADD,
+  ALU_SUB,
   ALU_SLT,
   ALU_SLTU,
   ALU_XOR,
@@ -439,6 +441,16 @@ module rv32i_in_order_core_decoder (
         alu_operand_b_select = ALU_OPERAND_B_SELECT_RS2;
         alu_opcode = ALU_ADD;
       end
+      `RV32_SUB: begin
+        destination_register = instruction.r_type_instruction.rd;
+
+        rs1_index = instruction.r_type_instruction.rs1;
+        rs2_index = instruction.r_type_instruction.rs2;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_RS1;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_RS2;
+        alu_opcode = ALU_SUB;
+      end
       default: begin
         illegal = `TRUE;
       end
@@ -516,6 +528,7 @@ module alu (
   always_comb begin
     case (opcode)
       ALU_ADD: result = left_hand_side_operand + right_hand_side_operand;
+      ALU_SUB: result = left_hand_side_operand - right_hand_side_operand;
       ALU_SLT:
       result = {{31{1'b0}}, signed'(left_hand_side_operand) < signed'(right_hand_side_operand)};
       ALU_SLTU: result = {{31{1'b0}}, left_hand_side_operand < right_hand_side_operand};
