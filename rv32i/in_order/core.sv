@@ -177,6 +177,7 @@ endmodule : virtual_flash
 `define TRUE 1'b1
 
 `define RV32_BASE_OPCODE_LUI 7'b0110111
+`define RV32_BASE_OPCODE_AUIPC 7'b0010111
 `define RV32_BASE_OPCODE_OP 7'b0110011
 `define RV32_BASE_OPCODE_OP_IMM 7'b0010011
 
@@ -188,6 +189,7 @@ endmodule : virtual_flash
                                 {{20{1'b?}}, {5{1'b?}}, ``opcode``}
 
 `define RV32_LUI `RV32_U_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_LUI)
+`define RV32_AUIPC `RV32_U_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_AUIPC)
 `define RV32_ADDI `RV32_I_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP_IMM, 3'b000)
 `define RV32_SLTI `RV32_I_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP_IMM, 3'b010)
 `define RV32_SLTIU `RV32_I_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP_IMM, 3'b011)
@@ -230,8 +232,8 @@ typedef struct packed {
 
 typedef struct packed {
   logic [19:0] imm;
-  logic [4:0] rd;
-  logic [6:0] opcode;
+  logic [4:0]  rd;
+  logic [6:0]  opcode;
 } rv32_u_type_instruction_t;
 
 typedef union packed {
@@ -243,6 +245,7 @@ typedef union packed {
 
 typedef enum {
   ALU_OPERAND_A_SELECT_RS1,
+  ALU_OPERAND_A_SELECT_PC,
   ALU_OPERAND_A_SELECT_ZERO
 } alu_operand_a_select_t;
 
@@ -309,6 +312,13 @@ typedef struct packed {
   logic valid;
 } memwb_packet_t;
 
+typedef struct packed {
+  logic        valid;
+  logic [4:0]  destination_register;
+  logic        data_valid;
+  logic [31:0] data;
+} result_forward_packet_t;
+
 module rv32i_in_order_core_instruction_fetch_stage (
     input logic clk,
     input logic rst,
@@ -347,6 +357,47 @@ module rv32i_in_order_core_instruction_fetch_stage (
   assign instruction_address = program_counter;
 endmodule : rv32i_in_order_core_instruction_fetch_stage
 
+module rv32i_in_order_core_instruction_fetch_stage_monitor (
+    input logic clk,
+    input logic rst,
+
+    input logic [31:0] program_counter
+);
+  string filename;
+  int fd;
+
+  longint unsigned cycle;
+  logic [31:0] last_program_counter;
+
+  initial begin
+    filename = $sformatf("trace_%m.jsonl");
+    fd = $fopen(filename, "w");
+    if (fd == 0) begin
+      $error("Failed to open trace file");
+      $finish;
+    end
+
+    cycle = 0;
+  end
+
+  always @(posedge clk) begin
+    cycle <= cycle + 1;
+
+    if (rst) begin
+      $fdisplay(
+          fd, "{\"cycle\": %0d, \"module\": \"%s\", \"event\": \"%s\", \"program_counter\": %0d}",
+          cycle, "rv32i_in_order_core_instruction_fetch_stage", "reset", program_counter);
+    end else if (program_counter != last_program_counter) begin
+      $fdisplay(
+          fd, "{\"cycle\": %0d, \"module\": \"%s\", \"event\": \"%s\", \"program_counter\": %0d}",
+          cycle, "rv32i_in_order_core_instruction_fetch_stage", "sequential_advancement",
+          program_counter);
+    end
+
+    last_program_counter <= program_counter;
+  end
+endmodule : rv32i_in_order_core_instruction_fetch_stage_monitor
+
 module rv32i_in_order_core_decoder (
     input rv32_instruction_t instruction,
 
@@ -380,6 +431,15 @@ module rv32i_in_order_core_decoder (
         rs1_index = instruction.i_type_instruction.rs1;
 
         alu_operand_a_select = ALU_OPERAND_A_SELECT_ZERO;
+        alu_operand_b_select = ALU_OPERAND_B_SELECT_U_IMM;
+        alu_opcode = ALU_ADD;
+      end
+      `RV32_AUIPC: begin
+        destination_register = instruction.i_type_instruction.rd;
+
+        rs1_index = instruction.i_type_instruction.rs1;
+
+        alu_operand_a_select = ALU_OPERAND_A_SELECT_PC;
         alu_operand_b_select = ALU_OPERAND_B_SELECT_U_IMM;
         alu_opcode = ALU_ADD;
       end
@@ -579,6 +639,9 @@ module rv32i_in_order_core_instruction_decode_stage (
     input logic [4:0] writeback_register,
     input logic [31:0] writeback_data,
 
+    input result_forward_packet_t execute_forward_packet,
+    input result_forward_packet_t memory_forward_packet,
+
     input  ifid_packet_t ifid_packet,
     output idex_packet_t idex_packet
 );
@@ -624,12 +687,87 @@ module rv32i_in_order_core_instruction_decode_stage (
 
   assign idex_packet.instruction = ifid_packet.instruction;
 
-  assign idex_packet.rs1_value = next_general_purpose_registers[rs1_index];
-  assign idex_packet.rs2_value = next_general_purpose_registers[rs2_index];
+  always_comb begin
+    if (execute_forward_packet.valid &&
+        execute_forward_packet.destination_register == rs1_index &&
+        execute_forward_packet.data_valid) begin
+      idex_packet.rs1_value = execute_forward_packet.data;
+    end else if (memory_forward_packet.valid &&
+        memory_forward_packet.destination_register == rs1_index &&
+        memory_forward_packet.data_valid) begin
+      idex_packet.rs1_value = memory_forward_packet.data;
+    end else begin
+      idex_packet.rs1_value = next_general_purpose_registers[rs1_index];
+    end
+  end
+
+  always_comb begin
+    if (execute_forward_packet.valid &&
+        execute_forward_packet.destination_register == rs2_index &&
+        execute_forward_packet.data_valid) begin
+      idex_packet.rs2_value = execute_forward_packet.data;
+    end else if (memory_forward_packet.valid &&
+        memory_forward_packet.destination_register == rs2_index &&
+        memory_forward_packet.data_valid) begin
+      idex_packet.rs2_value = memory_forward_packet.data;
+    end else begin
+      idex_packet.rs2_value = next_general_purpose_registers[rs2_index];
+    end
+  end
 
   assign idex_packet.program_counter = ifid_packet.program_counter;
   assign idex_packet.valid = ifid_packet.valid;
 endmodule : rv32i_in_order_core_instruction_decode_stage
+
+module rv32i_in_order_core_instruction_decode_stage_monitor (
+    input logic clk,
+    input logic rst,
+
+    input logic [31:0][31:0] general_purpose_registers
+);
+  string filename;
+  int fd;
+
+  longint unsigned cycle;
+  logic [31:0][31:0] last_general_purpose_registers;
+
+  initial begin
+    filename = $sformatf("trace_%m.jsonl");
+    fd = $fopen(filename, "w");
+    if (fd == 0) begin
+      $error("Failed to open trace file");
+      $finish;
+    end
+
+    cycle = 0;
+  end
+
+  always @(posedge clk) begin
+    cycle <= cycle + 1;
+
+    if (rst) begin
+      for (int i = 0; i < 32; ++i) begin
+        $fdisplay(
+            fd,
+            "{\"cycle\": %0d, \"module\": \"%s\", \"event\": \"%s\", \"register_index\": %0d, \"value\": %0d}",
+            cycle, "rv32i_in_order_core_instruction_decode_stage", "reset", i,
+            general_purpose_registers[i]);
+      end
+    end else begin
+      for (int i = 0; i < 32; ++i) begin
+        if (general_purpose_registers[i] != last_general_purpose_registers[i]) begin
+          $fdisplay(
+              fd,
+              "{\"cycle\": %0d, \"module\": \"%s\", \"event\": \"%s\", \"register_index\": %0d, \"value\": %0d}",
+              cycle, "rv32i_in_order_core_instruction_decode_stage", "gpr_write", i,
+              general_purpose_registers[i]);
+        end
+      end
+    end
+
+    last_general_purpose_registers <= general_purpose_registers;
+  end
+endmodule : rv32i_in_order_core_instruction_decode_stage_monitor
 
 module alu (
     input [31:0] left_hand_side_operand,
@@ -658,7 +796,9 @@ endmodule
 
 module rv32i_in_order_core_instruction_execute_stage (
     input  idex_packet_t  idex_packet,
-    output exmem_packet_t exmem_packet
+    output exmem_packet_t exmem_packet,
+
+    output result_forward_packet_t forward_packet
 );
   logic [31:0] left_hand_side_operand;
   logic [31:0] right_hand_side_operand;
@@ -667,6 +807,7 @@ module rv32i_in_order_core_instruction_execute_stage (
   always_comb begin
     case (idex_packet.alu_operand_a_select)
       ALU_OPERAND_A_SELECT_ZERO: left_hand_side_operand = 32'd0;
+      ALU_OPERAND_A_SELECT_PC: left_hand_side_operand = idex_packet.program_counter;
       ALU_OPERAND_A_SELECT_RS1: left_hand_side_operand = idex_packet.rs1_value;
       default: left_hand_side_operand = 32'hffffffff;
     endcase
@@ -688,19 +829,28 @@ module rv32i_in_order_core_instruction_execute_stage (
       .right_hand_side_operand(right_hand_side_operand),
       .opcode(idex_packet.alu_opcode),
 
-      .result(exmem_packet.alu_result)
+      .result(alu_result)
   );
 
   assign exmem_packet.destination_register = idex_packet.destination_register;
 
+  assign exmem_packet.alu_result = alu_result;
+
   assign exmem_packet.program_counter = idex_packet.program_counter;
   assign exmem_packet.illegal = idex_packet.illegal;
   assign exmem_packet.valid = idex_packet.valid;
+
+  assign forward_packet.valid = idex_packet.valid;
+  assign forward_packet.destination_register = idex_packet.destination_register;
+  assign forward_packet.data_valid = `TRUE;
+  assign forward_packet.data = alu_result;
 endmodule : rv32i_in_order_core_instruction_execute_stage
 
 module rv32i_in_order_core_instruction_memory_stage (
     input  exmem_packet_t exmem_packet,
-    output memwb_packet_t memwb_packet
+    output memwb_packet_t memwb_packet,
+
+    output result_forward_packet_t forward_packet
 );
   assign memwb_packet.destination_register = exmem_packet.destination_register;
 
@@ -709,6 +859,11 @@ module rv32i_in_order_core_instruction_memory_stage (
   assign memwb_packet.program_counter = exmem_packet.program_counter;
   assign memwb_packet.illegal = exmem_packet.illegal;
   assign memwb_packet.valid = exmem_packet.valid;
+
+  assign forward_packet.valid = exmem_packet.valid;
+  assign forward_packet.destination_register = exmem_packet.destination_register;
+  assign forward_packet.data_valid = `TRUE;
+  assign forward_packet.data = exmem_packet.alu_result;
 endmodule : rv32i_in_order_core_instruction_memory_stage
 
 module rv32i_in_order_core_instruction_writeback_stage (
@@ -745,6 +900,9 @@ module rv32i_in_order_core (
   logic writeback_valid;
   logic [4:0] writeback_register;
   logic [31:0] writeback_data;
+
+  result_forward_packet_t execute_forward_packet;
+  result_forward_packet_t memory_forward_packet;
 
   typedef enum {
     CHANNEL_A_TX,
@@ -885,6 +1043,9 @@ module rv32i_in_order_core (
       .writeback_register(writeback_register),
       .writeback_data(writeback_data),
 
+      .execute_forward_packet(execute_forward_packet),
+      .memory_forward_packet (memory_forward_packet),
+
       .ifid_packet(ifid_register),
       .idex_packet(idex_packet)
   );
@@ -901,7 +1062,9 @@ module rv32i_in_order_core (
 
   rv32i_in_order_core_instruction_execute_stage execute_stage_0 (
       .idex_packet (idex_register),
-      .exmem_packet(exmem_packet)
+      .exmem_packet(exmem_packet),
+
+      .forward_packet(execute_forward_packet)
   );
 
   always_ff @(posedge clk) begin
@@ -914,7 +1077,9 @@ module rv32i_in_order_core (
 
   rv32i_in_order_core_instruction_memory_stage memory_stage_0 (
       .exmem_packet(exmem_register),
-      .memwb_packet(memwb_packet)
+      .memwb_packet(memwb_packet),
+
+      .forward_packet(memory_forward_packet)
   );
 
   always_ff @(posedge clk) begin
@@ -953,6 +1118,24 @@ module tb;
       .tilelink_ul_if(tilelink_ul_if.master)
   );
 
+  bind rv32i_in_order_core_instruction_fetch_stage
+       rv32i_in_order_core_instruction_fetch_stage_monitor
+       fetch_monitor_0(
+      .clk(clk),
+      .rst(rst),
+
+      .program_counter(program_counter)
+  );
+
+  bind rv32i_in_order_core_instruction_decode_stage
+       rv32i_in_order_core_instruction_decode_stage_monitor
+       decode_monitor_0(
+      .clk(clk),
+      .rst(rst),
+
+      .general_purpose_registers(general_purpose_registers)
+  );
+
   virtual_flash rom0 (
       .clk(clk),
       .rst(rst),
@@ -964,13 +1147,6 @@ module tb;
   initial begin
     clk = 0;
     forever clk = #10 ~clk;
-  end
-
-  always_comb begin
-    if (core0.memwb_register.valid) begin
-      $display("Retired Instruction %8x: V: %8x, Illegal: %b", core0.memwb_register.program_counter,
-               core0.memwb_register.result, core0.memwb_register.illegal);
-    end
   end
 
   int firmware_image_file, read_code;
@@ -987,22 +1163,17 @@ module tb;
     if (read_code == 0) begin
       $display("Failed to read firmware binary.");
     end else begin
-      $display("Loaded %d bytes of firmware binary into ROM.", read_code);
+      $display("Loaded %0d bytes of firmware binary into ROM.", read_code);
     end
 
+    $display("Asserting reset...");
     rst = 1;
 
     @(negedge clk);
+    $display("Deasserting reset...");
     rst = 0;
 
     #800;
-
-    $display("Final register state:");
-    for (int i = 0; i < 32; ++i) begin
-      if (core0.decode_stage_0.general_purpose_registers[i] != 0) begin
-        $display("X%2d: %8x", i, core0.decode_stage_0.general_purpose_registers[i]);
-      end
-    end
     $finish;
   end
 endmodule
