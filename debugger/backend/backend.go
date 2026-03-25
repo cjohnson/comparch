@@ -10,14 +10,20 @@ import (
 	"strconv"
 )
 
-func ParseJSONL(filename string) ([]map[string]any, error) {
+type SignalUpdate struct {
+	Cycle  int    `json:"cycle"`
+	Signal string `json:"signal"`
+	Value  string `json:"value"`
+}
+
+func ParseJSONL(filename string) ([]SignalUpdate, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
-	var objects []map[string]any
+	var updates []SignalUpdate
 
 	scanner := bufio.NewScanner(file)
 	buf := make([]byte, 0, 64*1024)
@@ -30,41 +36,63 @@ func ParseJSONL(filename string) ([]map[string]any, error) {
 
 		line := scanner.Bytes()
 
-		var object map[string]any
-		if err := json.Unmarshal(line, &object); err != nil {
+		var update SignalUpdate
+		if err := json.Unmarshal(line, &update); err != nil {
 			return nil, fmt.Errorf("error parsing line %d: %w", lineNum, err)
 		}
 
-		objects = append(objects, object)
+		updates = append(updates, update)
 	}
 
-	return objects, nil
+	return updates, nil
 }
 
 func main() {
-	events, err := ParseJSONL("trace_TOP.tb.core0.decode_stage_0.decode_monitor_0.jsonl")
+	updates, err := ParseJSONL("trace_TOP.tb.core0.core_monitor_0.jsonl")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /api/gpr/{cycle}", func(w http.ResponseWriter, r *http.Request) {
-		cycle, _ := strconv.Atoi(r.PathValue("cycle"))
+	mux.HandleFunc("GET /api/list", func(w http.ResponseWriter, r *http.Request) {
+		list_set := make(map[string]any)
+		for _, update := range updates {
+			list_set[update.Signal] = nil
+		}
 
-		gprs := make(map[int]int)
-
-		for _, event := range events {
-			if int(event["cycle"].(float64)) > cycle {
-				break
-			}
-
-			gprs[int(event["register_index"].(float64))] = int(event["value"].(float64))
+		list := make([]string, 0)
+		for signal := range list_set {
+			list = append(list, signal)
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
-			"register_file": gprs,
+			"list": list,
 		})
+	})
+
+	mux.HandleFunc("GET /api/value/{signal}/{cycle}", func(w http.ResponseWriter, r *http.Request) {
+		signal := r.PathValue("signal")
+		cycle, _ := strconv.Atoi(r.PathValue("cycle"))
+
+		known := false
+		value := ""
+
+		for _, update := range updates {
+			if update.Cycle <= cycle && update.Signal == signal {
+				known = true
+				value = update.Value
+			}
+		}
+
+		if known {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"signal": signal,
+				"value":  value,
+			})
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
 	})
 
 	addr := ":8000"

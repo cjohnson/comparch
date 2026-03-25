@@ -357,47 +357,6 @@ module rv32i_in_order_core_instruction_fetch_stage (
   assign instruction_address = program_counter;
 endmodule : rv32i_in_order_core_instruction_fetch_stage
 
-module rv32i_in_order_core_instruction_fetch_stage_monitor (
-    input logic clk,
-    input logic rst,
-
-    input logic [31:0] program_counter
-);
-  string filename;
-  int fd;
-
-  longint unsigned cycle;
-  logic [31:0] last_program_counter;
-
-  initial begin
-    filename = $sformatf("trace_%m.jsonl");
-    fd = $fopen(filename, "w");
-    if (fd == 0) begin
-      $error("Failed to open trace file");
-      $finish;
-    end
-
-    cycle = 0;
-  end
-
-  always @(posedge clk) begin
-    cycle <= cycle + 1;
-
-    if (rst) begin
-      $fdisplay(
-          fd, "{\"cycle\": %0d, \"module\": \"%s\", \"event\": \"%s\", \"program_counter\": %0d}",
-          cycle, "rv32i_in_order_core_instruction_fetch_stage", "reset", program_counter);
-    end else if (program_counter != last_program_counter) begin
-      $fdisplay(
-          fd, "{\"cycle\": %0d, \"module\": \"%s\", \"event\": \"%s\", \"program_counter\": %0d}",
-          cycle, "rv32i_in_order_core_instruction_fetch_stage", "sequential_advancement",
-          program_counter);
-    end
-
-    last_program_counter <= program_counter;
-  end
-endmodule : rv32i_in_order_core_instruction_fetch_stage_monitor
-
 module rv32i_in_order_core_decoder (
     input rv32_instruction_t instruction,
 
@@ -718,56 +677,6 @@ module rv32i_in_order_core_instruction_decode_stage (
   assign idex_packet.program_counter = ifid_packet.program_counter;
   assign idex_packet.valid = ifid_packet.valid;
 endmodule : rv32i_in_order_core_instruction_decode_stage
-
-module rv32i_in_order_core_instruction_decode_stage_monitor (
-    input logic clk,
-    input logic rst,
-
-    input logic [31:0][31:0] general_purpose_registers
-);
-  string filename;
-  int fd;
-
-  longint unsigned cycle;
-  logic [31:0][31:0] last_general_purpose_registers;
-
-  initial begin
-    filename = $sformatf("trace_%m.jsonl");
-    fd = $fopen(filename, "w");
-    if (fd == 0) begin
-      $error("Failed to open trace file");
-      $finish;
-    end
-
-    cycle = 0;
-  end
-
-  always @(posedge clk) begin
-    cycle <= cycle + 1;
-
-    if (rst) begin
-      for (int i = 0; i < 32; ++i) begin
-        $fdisplay(
-            fd,
-            "{\"cycle\": %0d, \"module\": \"%s\", \"event\": \"%s\", \"register_index\": %0d, \"value\": %0d}",
-            cycle, "rv32i_in_order_core_instruction_decode_stage", "reset", i,
-            general_purpose_registers[i]);
-      end
-    end else begin
-      for (int i = 0; i < 32; ++i) begin
-        if (general_purpose_registers[i] != last_general_purpose_registers[i]) begin
-          $fdisplay(
-              fd,
-              "{\"cycle\": %0d, \"module\": \"%s\", \"event\": \"%s\", \"register_index\": %0d, \"value\": %0d}",
-              cycle, "rv32i_in_order_core_instruction_decode_stage", "gpr_write", i,
-              general_purpose_registers[i]);
-        end
-      end
-    end
-
-    last_general_purpose_registers <= general_purpose_registers;
-  end
-endmodule : rv32i_in_order_core_instruction_decode_stage_monitor
 
 module alu (
     input [31:0] left_hand_side_operand,
@@ -1099,6 +1008,55 @@ module rv32i_in_order_core (
   );
 endmodule : rv32i_in_order_core
 
+module rv32i_in_order_core_monitor (
+    input logic clk,
+    input logic rst,
+
+    input logic [31:0] program_counter,
+
+    input logic [31:0][31:0] general_purpose_registers
+);
+  string filename;
+  int fd;
+
+  longint unsigned cycle;
+
+  logic [31:0] last_program_counter;
+
+  logic [31:0][31:0] last_general_purpose_registers;
+
+  initial begin
+    filename = $sformatf("trace_%m.jsonl");
+    fd = $fopen(filename, "w");
+    if (fd == 0) begin
+      $error("Failed to open trace file");
+      $finish;
+    end
+
+    cycle = 0;
+  end
+
+  always @(posedge clk) begin
+    cycle <= cycle + 1;
+
+    if (rst || program_counter != last_program_counter) begin
+      $fdisplay(fd, "{\"cycle\": %0d, \"signal\": \"%s\", \"value\": \"%x\"}", cycle,
+                "program_counter", program_counter);
+    end
+
+    for (int i = 0; i < 32; ++i) begin
+      if (rst || general_purpose_registers[i] != last_general_purpose_registers[i]) begin
+        $fdisplay(fd, "{\"cycle\": %0d, \"signal\": \"%s[%0d]\", \"value\": \"%x\"}", cycle,
+                  "general_purpose_registers", i, general_purpose_registers[i]);
+      end
+    end
+
+    last_program_counter <= program_counter;
+    last_general_purpose_registers <= general_purpose_registers;
+  end
+endmodule : rv32i_in_order_core_monitor
+
+
 module tb;
   logic clk;
   logic rst;
@@ -1118,22 +1076,13 @@ module tb;
       .tilelink_ul_if(tilelink_ul_if.master)
   );
 
-  bind rv32i_in_order_core_instruction_fetch_stage
-       rv32i_in_order_core_instruction_fetch_stage_monitor
-       fetch_monitor_0(
+  bind rv32i_in_order_core rv32i_in_order_core_monitor core_monitor_0 (
       .clk(clk),
       .rst(rst),
 
-      .program_counter(program_counter)
-  );
+      .program_counter(fetch_stage_0.program_counter),
 
-  bind rv32i_in_order_core_instruction_decode_stage
-       rv32i_in_order_core_instruction_decode_stage_monitor
-       decode_monitor_0(
-      .clk(clk),
-      .rst(rst),
-
-      .general_purpose_registers(general_purpose_registers)
+      .general_purpose_registers(decode_stage_0.general_purpose_registers)
   );
 
   virtual_flash rom0 (
