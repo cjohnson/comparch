@@ -1,30 +1,42 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery
+} from '@tanstack/react-query'
 
-function App() {
-  let rows = [];
-  for (var i = 0; i < 32; i++) {
-    rows.push(
-      <tr>
-        <td>X{i}</td>
-        <td>0</td>
-      </tr>
-    );
-  }
+function SignalViewer(props: any) {
+  return (
+    <div className="signal-viewer">
+      <span className="signal-viewer-signal-title">{props.signal}</span>
+      <span className="signal-viewer-signal-value">{props.value}</span>
+    </div>
+  );
+}
+
+const queryClient = new QueryClient()
+
+async function getList() {
+  return await fetch('/api/list')
+    .then((response) => response.json())
+    .then((json) => json.list);
+}
+
+function List() {
+  const list = useQuery({ queryKey: ['list'], queryFn: getList });
 
   return (
-    <>
-      <table>
-        <tr>
-          <th>Register</th>
-          <th>Value</th>
-        </tr>
-        {rows}
-      </table>
-    </>
+      <div>
+        {list.data?.map((signal: string) => (<SignalViewer signal={signal} value="0" />))}
+      </div>
+  );
+}
+
+function App() {
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <List />
+    </QueryClientProvider>
   )
 }
 

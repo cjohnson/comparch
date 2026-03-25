@@ -55,6 +55,8 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	mux.Handle("/", http.FileServer(http.Dir("debugger/frontend/dist")))
+
 	mux.HandleFunc("GET /api/list", func(w http.ResponseWriter, r *http.Request) {
 		list_set := make(map[string]any)
 		for _, update := range updates {
