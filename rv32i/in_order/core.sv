@@ -178,39 +178,6 @@ endmodule : virtual_flash
 `define FALSE 1'b0
 `define TRUE 1'b1
 
-`define RV32_I_TYPE_SIGN_EXTEND(instruction) {{21{``instruction``[31]}}, ``instruction``[30:20]}
-`define RV32_U_TYPE_SIGN_EXTEND(instruction) {``instruction``[31:12], {12{1'b0}}}
-
-typedef struct packed {
-  logic [6:0] funct7;
-  logic [4:0] rs2;
-  logic [4:0] rs1;
-  logic [2:0] funct3;
-  logic [4:0] rd;
-  logic [6:0] opcode;
-} rv32_r_type_instruction_t;
-
-typedef struct packed {
-  logic [11:0] imm;
-  logic [4:0]  rs1;
-  logic [2:0]  funct3;
-  logic [4:0]  rd;
-  logic [6:0]  opcode;
-} rv32_i_type_instruction_t;
-
-typedef struct packed {
-  logic [19:0] imm;
-  logic [4:0]  rd;
-  logic [6:0]  opcode;
-} rv32_u_type_instruction_t;
-
-typedef union packed {
-  logic [31:0] instruction;
-  rv32_r_type_instruction_t r_type_instruction;
-  rv32_i_type_instruction_t i_type_instruction;
-  rv32_u_type_instruction_t u_type_instruction;
-} rv32_instruction_t;
-
 typedef enum {
   ALU_OPERAND_A_SELECT_RS1,
   ALU_OPERAND_A_SELECT_PC,

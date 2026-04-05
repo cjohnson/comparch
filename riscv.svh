@@ -53,8 +53,8 @@
 // Volume I: RISC-V Unprivileged ISA Specification
 // Chapter 35.1, RV32/RV64G Instruction Set Listings
 
-// LUI (load upper immediate) instruction format to match against.
-`define RV32_LUI `RV32_U_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_LUI)
+// LUI (load upper immediate) instruction format.
+`define RISCV_INSTRUCTION_FORMAT_LUI `RV32_U_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_LUI)
 
 // AUIPC (add upper immediate to pc) instruction format to match against.
 `define RV32_AUIPC `RV32_U_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_AUIPC)
@@ -127,5 +127,16 @@
 
 // AND (register and with register) instruction format to match against.
 `define RV32_AND `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP, 3'b111, 7'b0000000)
+
+// Base instruction formats immediate variants sign extension macro definitions
+//
+// Volume I: RISC-V Unprivileged ISA Specification
+// Chapter 2.1.3, Immediate Encoding Variants
+
+// Sign extension for an I-Type instruction.
+`define RV32_I_TYPE_SIGN_EXTEND(instruction) {{21{``instruction``[31]}}, ``instruction``[30:20]}
+
+// Sign extension for a U-Type instruction.
+`define RV32_U_TYPE_SIGN_EXTEND(instruction) {``instruction``[31:12], {12{1'b0}}}
 
 `endif  // RISCV_SVH_

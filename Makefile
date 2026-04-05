@@ -2,7 +2,8 @@ VERILATOR = verilator
 CMAKE = cmake
 
 SRCS = \
-	rv32i/in_order/core.sv
+	rtl/cjue_core_g1.sv \
+	riscv.sv
 
 .PHONY: clean
 
