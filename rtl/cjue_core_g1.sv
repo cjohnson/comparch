@@ -24,9 +24,18 @@ interface cjue_g1_core_if #(
 
     logic [4:0] destination_register;
 
+    logic [XLEN-1:0] rs1_value;
+    logic [XLEN-1:0] rs2_value;
+
     logic illegal;
     logic valid;
   } idex_packet_t;
+
+  typedef struct packed {
+    logic [XLEN-1:0] program_counter;
+
+    logic valid;
+  } exmem_packet_t;
 
   logic ifid_ready;
   ifid_packet_t ifid, ifid_packet;
@@ -124,6 +133,8 @@ module cjue_g1_instruction_decode_stage #(
   logic [4:0] rs1_index;
   logic [4:0] rs2_index;
 
+  logic [31:0][XLEN-1:0] registers, next_registers;
+
   cjue_g1_instruction_decoder decoder_0 (
       .instruction(core_if.ifid.instruction),
 
@@ -134,6 +145,25 @@ module cjue_g1_instruction_decode_stage #(
 
       .illegal(core_if.idex_packet.illegal)
   );
+
+  always_comb begin
+    next_registers = registers;
+
+    core_if.idex_packet.rs1_value = next_registers[rs1_index];
+    core_if.idex_packet.rs2_value = next_registers[rs2_index];
+  end
+
+  always_ff @(posedge clk) begin
+    if (rst) begin
+      for (int i = 0; i < 32; i++) begin
+        registers[i] <= 32'h00000000;
+      end
+    end else begin
+      for (int i = 0; i < 32; i++) begin
+        registers[i] <= next_registers[i];
+      end
+    end
+  end
 
   assign core_if.idex_packet.program_counter = core_if.ifid.program_counter;
 
@@ -200,8 +230,13 @@ module cjue_core_g1 (
 
   always_comb begin
     if (core_if.idex.valid) begin
-      $display("Retired: rd=%5b @ %8x", core_if.idex.destination_register,
-               core_if.idex.program_counter);
+      if (core_if.idex.illegal) begin
+        $display("Retired: (illegal)");
+      end else begin
+        $display("Retired: rs1v=%8x rs2v=%8x rd=%5b @ %8x", core_if.idex.rs1_value,
+                 core_if.idex.rs2_value, core_if.idex.destination_register,
+                 core_if.idex.program_counter);
+      end
     end
   end
 
