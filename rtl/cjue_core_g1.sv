@@ -88,9 +88,19 @@ module cjue_g1_instruction_decoder (
 
     output logic [4:0] destination_register,
 
+    output logic [4:0] rs1_index,
+    output logic [4:0] rs2_index,
+
     output logic illegal
 );
   always_comb begin
+    destination_register = '0;
+
+    rs1_index = '0;
+    rs2_index = '0;
+
+    illegal = 1'b1;
+
     casez (instruction)
       `RISCV_INSTRUCTION_FORMAT_LUI: begin
         destination_register = instruction.u_type.rd;
@@ -98,9 +108,6 @@ module cjue_g1_instruction_decoder (
         illegal = 1'b0;
       end
       default begin
-        destination_register = '0;
-
-        illegal = 1'b1;
       end
     endcase
   end
@@ -114,10 +121,17 @@ module cjue_g1_instruction_decode_stage #(
 
     cjue_g1_core_if core_if
 );
+  logic [4:0] rs1_index;
+  logic [4:0] rs2_index;
+
   cjue_g1_instruction_decoder decoder_0 (
       .instruction(core_if.ifid.instruction),
 
       .destination_register(core_if.idex_packet.destination_register),
+
+      .rs1_index(rs1_index),
+      .rs2_index(rs2_index),
+
       .illegal(core_if.idex_packet.illegal)
   );
 
