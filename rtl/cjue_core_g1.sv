@@ -60,6 +60,17 @@ interface cjue_g1_core_if #(
     logic valid;
   } exmem_packet_t;
 
+  typedef struct packed {
+    logic [XLEN-1:0] program_counter;
+
+    logic [4:0] destination_register;
+
+    logic [XLEN-1:0] result;
+
+    logic illegal;
+    logic valid;
+  } memwb_packet_t;
+
   logic ifid_ready;
   ifid_packet_t ifid, ifid_packet;
 
@@ -68,6 +79,9 @@ interface cjue_g1_core_if #(
 
   logic exmem_ready;
   exmem_packet_t exmem, exmem_packet;
+
+  logic memwb_ready;
+  memwb_packet_t memwb, memwb_packet;
 
   modport fetch_stage(
       output memory_request,
@@ -84,6 +98,8 @@ interface cjue_g1_core_if #(
   modport decode_stage(input idex_ready, output ifid_ready, input ifid, output idex_packet);
 
   modport execute_stage(input exmem_ready, output idex_ready, input idex, output exmem_packet);
+
+  modport memory_stage(input memwb_ready, output exmem_ready, input exmem, output memwb_packet);
 endinterface : cjue_g1_core_if
 
 module cjue_g1_instruction_fetch_stage #(
@@ -285,6 +301,23 @@ module cjue_g1_execute_stage #(
   assign core_if.idex_ready = core_if.exmem_ready;
 endmodule : cjue_g1_execute_stage
 
+module cjue_g1_memory_stage #(
+    parameter int unsigned XLEN
+) (
+    cjue_g1_core_if core_if
+);
+  assign core_if.memwb_packet.program_counter = core_if.exmem.program_counter;
+
+  assign core_if.memwb_packet.destination_register = core_if.exmem.destination_register;
+
+  assign core_if.memwb_packet.result = core_if.exmem.alu_result;
+
+  assign core_if.memwb_packet.illegal = core_if.exmem.illegal;
+  assign core_if.memwb_packet.valid = core_if.exmem.valid;
+
+  assign core_if.exmem_ready = core_if.memwb_ready;
+endmodule : cjue_g1_memory_stage
+
 module cjue_core_g1 (
     input logic clk,
     input logic rst,
@@ -351,18 +384,28 @@ module cjue_core_g1 (
     end
   end
 
+  cjue_g1_memory_stage #(.XLEN(XLEN)) memory_stage_0 (.core_if(core_if.memory_stage));
+
+  always_ff @(posedge clk) begin
+    if (rst) begin
+      core_if.memwb <= '0;
+    end else if (core_if.memwb_ready) begin
+      core_if.memwb <= core_if.memwb_packet;
+    end
+  end
+
   always_comb begin
-    if (core_if.exmem.valid) begin
-      if (core_if.exmem.illegal) begin
+    if (core_if.memwb.valid) begin
+      if (core_if.memwb.illegal) begin
         $display("Retired: (illegal)");
       end else begin
-        $display("Retired: rd=%5b, v=%8x @ %8x", core_if.exmem.destination_register,
-                 core_if.exmem.alu_result, core_if.exmem.program_counter);
+        $display("Retired: rd=%5b, v=%8x @ %8x", core_if.memwb.destination_register,
+                 core_if.memwb.result, core_if.memwb.program_counter);
       end
     end
   end
 
-  assign core_if.exmem_ready = 1'b1;
+  assign core_if.memwb_ready = 1'b1;
 endmodule : cjue_core_g1
 
 module testbench;
