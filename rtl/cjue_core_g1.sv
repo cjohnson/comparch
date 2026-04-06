@@ -26,6 +26,12 @@ interface cjue_g1_core_if #(
     input logic [XLEN-1:0] memory_response_data
 );
   typedef struct packed {
+    logic [4:0] destination_register;
+    logic [XLEN-1:0] data;
+    logic valid;
+  } writeback_packet_t;
+
+  typedef struct packed {
     riscv::instruction_t instruction;
     logic [XLEN-1:0] program_counter;
 
@@ -71,6 +77,8 @@ interface cjue_g1_core_if #(
     logic valid;
   } memwb_packet_t;
 
+  writeback_packet_t writeback_packet;
+
   logic ifid_ready;
   ifid_packet_t ifid, ifid_packet;
 
@@ -95,11 +103,21 @@ interface cjue_g1_core_if #(
       output ifid_packet
   );
 
-  modport decode_stage(input idex_ready, output ifid_ready, input ifid, output idex_packet);
+  modport decode_stage(
+      input writeback_packet,
+
+      input idex_ready,
+      output ifid_ready,
+
+      input ifid,
+      output idex_packet
+  );
 
   modport execute_stage(input exmem_ready, output idex_ready, input idex, output exmem_packet);
 
   modport memory_stage(input memwb_ready, output exmem_ready, input exmem, output memwb_packet);
+
+  modport writeback_stage(output memwb_ready, input memwb, output writeback_packet);
 endinterface : cjue_g1_core_if
 
 module cjue_g1_instruction_fetch_stage #(
@@ -211,6 +229,12 @@ module cjue_g1_instruction_decode_stage #(
   always_comb begin
     next_registers = registers;
 
+    if (core_if.writeback_packet.valid) begin
+      next_registers[core_if.writeback_packet.destination_register] = core_if.writeback_packet.data;
+      $display("Wrote %8x to X%0d.", core_if.writeback_packet.data,
+               core_if.writeback_packet.destination_register);
+    end
+
     core_if.idex_packet.rs1_value = next_registers[rs1_index];
     core_if.idex_packet.rs2_value = next_registers[rs2_index];
   end
@@ -318,6 +342,24 @@ module cjue_g1_memory_stage #(
   assign core_if.exmem_ready = core_if.memwb_ready;
 endmodule : cjue_g1_memory_stage
 
+module cjue_g1_writeback_stage (
+    cjue_g1_core_if core_if
+);
+  always_comb begin
+    core_if.writeback_packet.destination_register = '0;
+    core_if.writeback_packet.data = '0;
+    core_if.writeback_packet.valid = 1'b0;
+
+    if (core_if.memwb.valid && !core_if.memwb.illegal) begin
+      core_if.writeback_packet.destination_register = core_if.memwb.destination_register;
+      core_if.writeback_packet.data = core_if.memwb.result;
+      core_if.writeback_packet.valid = 1'b1;
+    end
+  end
+
+  assign core_if.memwb_ready = 1'b1;
+endmodule : cjue_g1_writeback_stage
+
 module cjue_core_g1 (
     input logic clk,
     input logic rst,
@@ -394,6 +436,8 @@ module cjue_core_g1 (
     end
   end
 
+  cjue_g1_writeback_stage writeback_stage_0 (.core_if(core_if.writeback_stage));
+
   always_comb begin
     if (core_if.memwb.valid) begin
       if (core_if.memwb.illegal) begin
@@ -404,8 +448,6 @@ module cjue_core_g1 (
       end
     end
   end
-
-  assign core_if.memwb_ready = 1'b1;
 endmodule : cjue_core_g1
 
 module testbench;
