@@ -2,8 +2,7 @@ VERILATOR = verilator
 CMAKE = cmake
 
 SRCS = \
-	rtl/cjue_core_g1.sv \
-	riscv.sv
+	rtl/cjue_core_g1.sv
 
 .PHONY: clean
 

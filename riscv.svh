@@ -128,16 +128,18 @@
 // AND (register and with register) instruction format to match against.
 `define RV32_AND `RV32_R_TYPE_INSTRUCTION(`RV32_BASE_OPCODE_OP, 3'b111, 7'b0000000)
 
-// Base instruction formats immediate variants sign extension macro definitions
+// Macro definitions for sign-extending immediates.
 //
 // Volume I: RISC-V Unprivileged ISA Specification
 // Chapter 2.1.3, Immediate Encoding Variants
 
-// Sign extension for an I-Type instruction.
-`define RV32_I_TYPE_SIGN_EXTEND(instruction) {{21{``instruction``[31]}}, ``instruction``[30:20]}
+// Performs sign extension of the immediate for the provided I-Type instruction.
+`define RISCV_SIGN_EXTEND_I_TYPE_IMMEDIATE(instruction) \
+    {{21{``instruction``[31]}}, ``instruction``[30:20]}
 
-// Sign extension for a U-Type instruction.
-`define RV32_U_TYPE_SIGN_EXTEND(instruction) {``instruction``[31:12], {12{1'b0}}}
+// Performs sign extension of the immediate for the provided U-Type instruction.
+`define RISCV_SIGN_EXTEND_U_TYPE_IMMEDIATE(instruction) \
+    {``instruction``[31:12], {12{1'b0}}}
 
 package riscv;
   // RISC-V base instruction format structs.

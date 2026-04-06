@@ -2,6 +2,20 @@
 
 `include "riscv.svh"
 
+typedef enum logic [1:0] {
+  ALU_LEFT_HAND_SIDE_OPERAND_SELECT_RS1,
+  ALU_LEFT_HAND_SIDE_OPERAND_SELECT_PC,
+  ALU_LEFT_HAND_SIDE_OPERAND_SELECT_ZERO
+} alu_left_hand_side_operand_select_e;
+
+typedef enum logic [1:0] {
+  ALU_RIGHT_HAND_SIDE_OPERAND_SELECT_RS2,
+  ALU_RIGHT_HAND_SIDE_OPERAND_SELECT_I_TYPE_IMMEDIATE,
+  ALU_RIGHT_HAND_SIDE_OPERAND_SELECT_U_TYPE_IMMEDIATE
+} alu_right_hand_side_operand_select_e;
+
+typedef enum {ALU_OPCODE_ADD} alu_opcode_e;
+
 interface cjue_g1_core_if #(
     parameter int unsigned XLEN
 ) (
@@ -27,6 +41,10 @@ interface cjue_g1_core_if #(
     logic [XLEN-1:0] rs1_value;
     logic [XLEN-1:0] rs2_value;
 
+    alu_left_hand_side_operand_select_e alu_left_hand_side_operand_select;
+    alu_right_hand_side_operand_select_e alu_right_hand_side_operand_select;
+    alu_opcode_e alu_opcode;
+
     logic illegal;
     logic valid;
   } idex_packet_t;
@@ -34,6 +52,11 @@ interface cjue_g1_core_if #(
   typedef struct packed {
     logic [XLEN-1:0] program_counter;
 
+    logic [4:0] destination_register;
+
+    logic [XLEN-1:0] alu_result;
+
+    logic illegal;
     logic valid;
   } exmem_packet_t;
 
@@ -42,6 +65,9 @@ interface cjue_g1_core_if #(
 
   logic idex_ready;
   idex_packet_t idex, idex_packet;
+
+  logic exmem_ready;
+  exmem_packet_t exmem, exmem_packet;
 
   modport fetch_stage(
       output memory_request,
@@ -56,6 +82,8 @@ interface cjue_g1_core_if #(
   );
 
   modport decode_stage(input idex_ready, output ifid_ready, input ifid, output idex_packet);
+
+  modport execute_stage(input exmem_ready, output idex_ready, input idex, output exmem_packet);
 endinterface : cjue_g1_core_if
 
 module cjue_g1_instruction_fetch_stage #(
@@ -100,23 +128,37 @@ module cjue_g1_instruction_decoder (
     output logic [4:0] rs1_index,
     output logic [4:0] rs2_index,
 
+    output alu_left_hand_side_operand_select_e alu_left_hand_side_operand_select,
+    output alu_right_hand_side_operand_select_e alu_right_hand_side_operand_select,
+    output alu_opcode_e alu_opcode,
+
     output logic illegal
 );
   always_comb begin
-    destination_register = '0;
-
-    rs1_index = '0;
-    rs2_index = '0;
-
-    illegal = 1'b1;
-
     casez (instruction)
       `RISCV_INSTRUCTION_FORMAT_LUI: begin
         destination_register = instruction.u_type.rd;
 
+        rs1_index = '0;
+        rs2_index = '0;
+
+        alu_left_hand_side_operand_select = ALU_LEFT_HAND_SIDE_OPERAND_SELECT_ZERO;
+        alu_right_hand_side_operand_select = ALU_RIGHT_HAND_SIDE_OPERAND_SELECT_U_TYPE_IMMEDIATE;
+        alu_opcode = ALU_OPCODE_ADD;
+
         illegal = 1'b0;
       end
       default begin
+        destination_register = '0;
+
+        rs1_index = '0;
+        rs2_index = '0;
+
+        alu_left_hand_side_operand_select = ALU_LEFT_HAND_SIDE_OPERAND_SELECT_RS1;
+        alu_right_hand_side_operand_select = ALU_RIGHT_HAND_SIDE_OPERAND_SELECT_RS2;
+        alu_opcode = ALU_OPCODE_ADD;
+
+        illegal = 1'b1;
       end
     endcase
   end
@@ -143,6 +185,10 @@ module cjue_g1_instruction_decode_stage #(
       .rs1_index(rs1_index),
       .rs2_index(rs2_index),
 
+      .alu_left_hand_side_operand_select(core_if.idex_packet.alu_left_hand_side_operand_select),
+      .alu_right_hand_side_operand_select(core_if.idex_packet.alu_right_hand_side_operand_select),
+      .alu_opcode(core_if.idex_packet.alu_opcode),
+
       .illegal(core_if.idex_packet.illegal)
   );
 
@@ -165,12 +211,79 @@ module cjue_g1_instruction_decode_stage #(
     end
   end
 
+  assign core_if.idex_packet.instruction = core_if.ifid.instruction;
   assign core_if.idex_packet.program_counter = core_if.ifid.program_counter;
 
   assign core_if.idex_packet.valid = core_if.ifid.valid;
 
   assign core_if.ifid_ready = core_if.idex_ready;
 endmodule : cjue_g1_instruction_decode_stage
+
+module cjue_g1_alu #(
+    parameter int unsigned XLEN
+) (
+    input logic [XLEN-1:0] left_hand_side_operand,
+    input logic [XLEN-1:0] right_hand_side_operand,
+    input alu_opcode_e opcode,
+
+    output logic [XLEN-1:0] result
+);
+  always_comb begin
+    case (opcode)
+      ALU_OPCODE_ADD: result = left_hand_side_operand + right_hand_side_operand;
+      default: result = 32'hffffffff;
+    endcase
+  end
+endmodule : cjue_g1_alu
+
+module cjue_g1_execute_stage #(
+    parameter int unsigned XLEN
+) (
+    cjue_g1_core_if core_if
+);
+  logic [XLEN-1:0] left_hand_side_operand;
+  logic [XLEN-1:0] right_hand_side_operand;
+  logic [XLEN-1:0] result;
+
+  always_comb begin
+    case (core_if.idex.alu_left_hand_side_operand_select)
+      ALU_LEFT_HAND_SIDE_OPERAND_SELECT_RS1: left_hand_side_operand = core_if.idex.rs1_value;
+      ALU_LEFT_HAND_SIDE_OPERAND_SELECT_PC: left_hand_side_operand = core_if.idex.program_counter;
+      ALU_LEFT_HAND_SIDE_OPERAND_SELECT_ZERO: left_hand_side_operand = 32'h00000000;
+      default: left_hand_side_operand = 32'hffffffff;
+    endcase
+  end
+
+  always_comb begin
+    case (core_if.idex.alu_right_hand_side_operand_select)
+      ALU_RIGHT_HAND_SIDE_OPERAND_SELECT_RS2: right_hand_side_operand = core_if.idex.rs2_value;
+      ALU_RIGHT_HAND_SIDE_OPERAND_SELECT_I_TYPE_IMMEDIATE:
+      right_hand_side_operand = `RISCV_SIGN_EXTEND_I_TYPE_IMMEDIATE(core_if.idex.instruction.data);
+      ALU_RIGHT_HAND_SIDE_OPERAND_SELECT_U_TYPE_IMMEDIATE:
+      right_hand_side_operand = `RISCV_SIGN_EXTEND_U_TYPE_IMMEDIATE(core_if.idex.instruction.data);
+      default: right_hand_side_operand = 32'hffffffff;
+    endcase
+  end
+
+  cjue_g1_alu #(
+      .XLEN(XLEN)
+  ) alu_0 (
+      .left_hand_side_operand(left_hand_side_operand),
+      .right_hand_side_operand(right_hand_side_operand),
+      .opcode(core_if.idex.alu_opcode),
+
+      .result(core_if.exmem_packet.alu_result)
+  );
+
+  assign core_if.exmem_packet.program_counter = core_if.idex.program_counter;
+
+  assign core_if.exmem_packet.destination_register = core_if.idex.destination_register;
+
+  assign core_if.exmem_packet.illegal = core_if.idex.illegal;
+  assign core_if.exmem_packet.valid = core_if.idex.valid;
+
+  assign core_if.idex_ready = core_if.exmem_ready;
+endmodule : cjue_g1_execute_stage
 
 module cjue_core_g1 (
     input logic clk,
@@ -228,19 +341,28 @@ module cjue_core_g1 (
     end
   end
 
+  cjue_g1_execute_stage #(.XLEN(XLEN)) execute_stage_0 (.core_if(core_if.execute_stage));
+
+  always_ff @(posedge clk) begin
+    if (rst) begin
+      core_if.exmem <= '0;
+    end else if (core_if.exmem_ready) begin
+      core_if.exmem <= core_if.exmem_packet;
+    end
+  end
+
   always_comb begin
-    if (core_if.idex.valid) begin
-      if (core_if.idex.illegal) begin
+    if (core_if.exmem.valid) begin
+      if (core_if.exmem.illegal) begin
         $display("Retired: (illegal)");
       end else begin
-        $display("Retired: rs1v=%8x rs2v=%8x rd=%5b @ %8x", core_if.idex.rs1_value,
-                 core_if.idex.rs2_value, core_if.idex.destination_register,
-                 core_if.idex.program_counter);
+        $display("Retired: rd=%5b, v=%8x @ %8x", core_if.exmem.destination_register,
+                 core_if.exmem.alu_result, core_if.exmem.program_counter);
       end
     end
   end
 
-  assign core_if.idex_ready = 1'b1;
+  assign core_if.exmem_ready = 1'b1;
 endmodule : cjue_core_g1
 
 module testbench;
