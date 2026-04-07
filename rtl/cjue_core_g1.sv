@@ -26,6 +26,13 @@ interface cjue_g1_core_if #(
     input logic [XLEN-1:0] memory_response_data
 );
   typedef struct packed {
+    logic [XLEN-1:0] data;
+    logic data_valid;
+    logic [4:0] register;
+    logic valid;
+  } forward_packet_t;
+
+  typedef struct packed {
     logic [4:0] destination_register;
     logic [XLEN-1:0] data;
     logic valid;
@@ -77,6 +84,9 @@ interface cjue_g1_core_if #(
     logic valid;
   } memwb_packet_t;
 
+  forward_packet_t execute_forward_packet;
+  forward_packet_t memory_forward_packet;
+
   writeback_packet_t writeback_packet;
 
   logic ifid_ready;
@@ -104,6 +114,9 @@ interface cjue_g1_core_if #(
   );
 
   modport decode_stage(
+      input execute_forward_packet,
+      input memory_forward_packet,
+
       input writeback_packet,
 
       input idex_ready,
@@ -113,9 +126,25 @@ interface cjue_g1_core_if #(
       output idex_packet
   );
 
-  modport execute_stage(input exmem_ready, output idex_ready, input idex, output exmem_packet);
+  modport execute_stage(
+      input exmem_ready,
+      output idex_ready,
 
-  modport memory_stage(input memwb_ready, output exmem_ready, input exmem, output memwb_packet);
+      input idex,
+      output exmem_packet,
+
+      output execute_forward_packet
+  );
+
+  modport memory_stage(
+      input memwb_ready,
+      output exmem_ready,
+
+      input exmem,
+      output memwb_packet,
+
+      output memory_forward_packet
+  );
 
   modport writeback_stage(output memwb_ready, input memwb, output writeback_packet);
 endinterface : cjue_g1_core_if
@@ -209,7 +238,11 @@ module cjue_g1_instruction_decode_stage #(
   logic [4:0] rs1_index;
   logic [4:0] rs2_index;
 
-  logic [31:0][XLEN-1:0] registers, next_registers;
+  logic [XLEN-1:0] rs1_value;
+  logic [XLEN-1:0] rs2_value;
+
+  logic [31:0][XLEN-1:0] registers;
+  logic [31:0][XLEN-1:0] next_registers;
 
   cjue_g1_instruction_decoder decoder_0 (
       .instruction(core_if.ifid.instruction),
@@ -228,15 +261,9 @@ module cjue_g1_instruction_decode_stage #(
 
   always_comb begin
     next_registers = registers;
-
     if (core_if.writeback_packet.valid) begin
       next_registers[core_if.writeback_packet.destination_register] = core_if.writeback_packet.data;
-      $display("Wrote %8x to X%0d.", core_if.writeback_packet.data,
-               core_if.writeback_packet.destination_register);
     end
-
-    core_if.idex_packet.rs1_value = next_registers[rs1_index];
-    core_if.idex_packet.rs2_value = next_registers[rs2_index];
   end
 
   always_ff @(posedge clk) begin
@@ -253,6 +280,9 @@ module cjue_g1_instruction_decode_stage #(
 
   assign core_if.idex_packet.instruction = core_if.ifid.instruction;
   assign core_if.idex_packet.program_counter = core_if.ifid.program_counter;
+
+  assign core_if.idex_packet.rs1_value = next_registers[rs1_index];
+  assign core_if.idex_packet.rs2_value = next_registers[rs2_index];
 
   assign core_if.idex_packet.valid = core_if.ifid.valid;
 
